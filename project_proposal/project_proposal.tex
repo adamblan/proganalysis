@@ -1,19 +1,18 @@
 \documentclass{mfcs}
 \topic{\normalsize Adam Blank (adamblan@cs) and Michael Arntzenius (daekharel@gmail.com)}
-%\usepackage{biblatex}
-%\addbibresource{all.bib}
 \begin{document}
 
 \begin{question}{Project Description}
-The high level main goals of this project are to implement several programs:
+  The high level goal of this project is to implement several functions. Given a
+  Python program $P$,
 \begin{itemize}
-    \item \verb+ub_time_complexity(P)+ returns a valid symbolic upper bound on the \emph{run time} of $P$.
-    \item \verb+ub_output_complexity(P)+ returns a valid symbolic upper bound on the \emph{size} of the output of $P$.
-    \item \verb+lb_time_complexity(P)+ returns a valid symbolic lower bound on the \emph{run time} of $P$.
-    \item \verb+lb_output_complexity(P)+ returns a valid symbolic lower bound on the \emph{size} of the output of $P$.
+    \item \verb+ub_time_complexity(P)+ returns a symbolic upper bound on the \emph{run time} of $P$.
+    \item \verb+ub_output_complexity(P)+ returns a symbolic upper bound on the \emph{size} of the output of $P$.
+    \item \verb+lb_time_complexity(P)+ returns a symbolic lower bound on the \emph{run time} of $P$.
+    \item \verb+lb_output_complexity(P)+ returns a symbolic lower bound on the \emph{size} of the output of $P$.
 \end{itemize}
 
-Just as a quick example, consider the following code:
+For example, consider the following code:
 \begin{lstlisting}
 def f(n):
     out = 1
@@ -22,41 +21,58 @@ def f(n):
     return out
 \end{lstlisting}
 
-We can see that \verb+ub_timecomplexity(f)+ $=n \in \mathcal{O}(n)$, because the loop runs $n$ iterations; however, the function \emph{returns} $\verb+out+$ which
-started as $1$ and was multiplied by $n$, $n$ times.  So, \verb+ub_outputcomplexity(f)+ $=n^n \in \mathcal{O}(n^n)$.
+We can see that \verb+ub_time_complexity(f)+ should return $n \in
+\mathcal{O}(n)$, because the loop runs $n$ iterations. However, \verb+f+
+\emph{returns} $\verb+out+$ which is $1$ initially and is multiplied by $n$, $n$
+times. So, \verb+ub_output_complexity(f)+ $=n^n \in \mathcal{O}(n^n)$.
 
 {\color{colour}\subsection{Restrictions}}
 
-In order to keep the scope of this assignment reasonable, we will restrict input programs in the following ways:
+In order to keep the scope of this assignment reasonable, we will restrict input
+programs in the following ways:
 \begin{itemize}
-    \item All functions will be of type $\verb+int+ \to \verb+int+$.
-    \item We will only simplify recursive programs of several particular forms.
-    \item We will ignore certain dynamic features of Python.
-    \item If termination/invariant detection is too difficult to infer, we will output \verb+?+.
+\item All functions will be of type $\verb+int+, \verb+int+, ..., \verb+int+ \to
+  \verb+int+$.
+\item We will only simplify recursive programs of several particular forms
+  (discussed below).
+\item We will ignore certain dynamic features of Python.
+\item If termination/invariant detection is too difficult to infer, we will
+  output \verb+?+, meaning ``we do not know''.
 \end{itemize}
 \end{question}
 
-The difficulty arises in how to handle loops and recursion.
+The difficulty arises in handling loops and recursion.
 
 {\color{colour}\subsection{Loops}}
 
-To effectively bound the runtime of a loop, we need to be able to bound the number of iterations.  We propose doing this by
-using a variety of AI techniques and ideas from CITE PAPER HERE to generate invariants on the outputs of variables after
-multiple iterations.  In particular, we aim to be able to handle \emph{binary search}-like functions, and \emph{early terminations}
-of loops.  We intend to use search techniques on the AST of the loop, planning to prove the invariants we find correct, and possibly
-machine learning to classify programs as terminating or not.
+% FIXME: cite paper
+To effectively bound the runtime of a loop, we must bound the number of
+iterations. We propose doing this by using a variety of AI techniques and ideas
+from CITE PAPER HERE to generate invariants on the values of variables after
+multiple iterations. In particular, we aim to be able to handle \emph{binary
+  search}-like functions, and \emph{early terminations} of loops. We intend to
+use search techniques on the AST of the loop, planning to prove the invariants
+we find correct, and possibly machine learning to classify programs as
+terminating or not.
 
 {\color{colour}\subsection{Recursion}}
 
-To effectively bound the runtime of a recursive function, we need to be able to bound the number of recursive calls.  We only consider
-the class of programs where one of the following is true, for $f(\textbf{x})$.  We say $f(a_1, a_2, \dots, a_n) \rightsquigarrow f(b_1, b_2, \dots, b_n)$, when
-$f(\textbf{b})$ is called as part of executing $f(\textbf{a})$:
+% TODO: clarify f(a) might not be called directly
+To effectively bound the runtime of a recursive function, we need to be able to
+bound the number of recursive calls. We only consider the class of programs
+where one of the following is true, for $f(\textbf{x})$. We say $f(a_1, a_2,
+\dots, a_n) \rightsquigarrow f(b_1, b_2, \dots, b_n)$, when $f(\textbf{b})$ is
+called as part of executing $f(\textbf{a})$:
 \begin{itemize}
-    \item $\exists i.\; \forall \textbf{y}.\; f(\textbf{x}) \rightsquigarrow f(\textbf{y}) \implies y_i < x_i$
-    \item $\exists (M \in \mathbb{N}).\; \forall f(\textbf{y}).\; M \geq f(\textbf{y})$ and $\exists i.\; \forall \textbf{y}.\; f(\textbf{x}) \rightsquigarrow f(\textbf{y}) \implies y_i > x_i$
+\item $\exists i,m.\; \forall \textbf{y}.\; f(\textbf{x}) \rightsquigarrow
+  f(\textbf{y}) \implies m \le y_i < x_i$
+\item $\exists i,M.\; \forall \textbf{y}.\; f(\textbf{x}) \rightsquigarrow
+  f(\textbf{y}) \implies x_i < y_i \le M$
 \end{itemize}
 
-Again, to determine of the programs are of the form, and to prove such a fact, we use planning and search.
+As with loops, we will use planning and search to determine and prove whether
+programs are of this form or not.
+
 
 \begin{question}{References}
   % \printbibliography[heading=none]
