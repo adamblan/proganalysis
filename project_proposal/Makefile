@@ -5,3 +5,4 @@ all:
 
 clean:
 	latexmk -c
+	rm -f *.{bbl,run.xml} *-blx.bib

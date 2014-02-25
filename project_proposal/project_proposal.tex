@@ -1,5 +1,9 @@
 \documentclass{mfcs}
 \topic{\normalsize Adam Blank (adamblan@cs) and Michael Arntzenius (daekharel@gmail.com)}
+
+\usepackage[backend=bibtex]{biblatex}
+\bibliography{proposal}
+
 \begin{document}
 
 \begin{question}{Project Description}
@@ -47,14 +51,18 @@ The difficulty arises in handling loops and recursion.
 
 % FIXME: cite paper
 % CITING sas11-bound, pldi10_speed, cav09_speed
+% Zuleger:2011:BAI:2041552.2041574
+% Gulwani:2010:RP:1809028.1806630
+% Gulwani:2009:SSC:1575060.1575069
 To effectively bound the runtime of a loop, we must bound the number of
 iterations. We propose doing this by using a variety of AI techniques and ideas
-from CITE PAPER HERE to generate invariants on the values of variables after
-multiple iterations. In particular, we aim to be able to handle \emph{binary
-  search}-like functions, and \emph{early terminations} of loops. We intend to
-use search techniques on the AST of the loop, planning to prove the invariants
-we find correct, and possibly machine learning to classify programs as
-terminating or not.
+from \cite{Zuleger:2011:BAI:2041552.2041574, Gulwani:2010:RP:1809028.1806630,
+  Gulwani:2009:SSC:1575060.1575069} to generate invariants on the values of
+variables after multiple iterations. In particular, we aim to be able to handle
+\emph{binary search}-like functions, and \emph{early terminations} of loops. We
+intend to use search techniques on the AST of the loop, planning to prove the
+invariants we find correct, and possibly machine learning to classify programs
+as terminating or not.
 
 {\color{colour}\subsection{Recursion}}
 
@@ -76,8 +84,10 @@ programs are of this form or not.
 
 
 \begin{question}{References}
-  % \printbibliography[heading=none]
+  \nocite{*}
+  \printbibliography[heading=none]
 \end{question}
+
 \end{document}
 
 % http://charlesneedham.com/en-us/um/people/sumitg/pubs/pldi10_speed.pdf
