@@ -1,0 +1,210 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>astroid &mdash; Astroid 0.24.4 documentation</title>
+    
+    <link rel="stylesheet" href="../_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../',
+        VERSION:     '0.24.4',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../_static/jquery.js"></script>
+    <script type="text/javascript" src="../_static/underscore.js"></script>
+    <script type="text/javascript" src="../_static/doctools.js"></script>
+    <link rel="top" title="Astroid 0.24.4 documentation" href="../index.html" />
+    <link rel="up" title="Module code" href="index.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../index.html">Astroid 0.24.4 documentation</a> &raquo;</li>
+          <li><a href="index.html" accesskey="U">Module code</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for astroid</h1><div class="highlight"><pre>
+<span class="c"># copyright 2003-2013 LOGILAB S.A. (Paris, FRANCE), all rights reserved.</span>
+<span class="c"># contact http://www.logilab.fr/ -- mailto:contact@logilab.fr</span>
+<span class="c">#</span>
+<span class="c"># This file is part of astroid.</span>
+<span class="c">#</span>
+<span class="c"># astroid is free software: you can redistribute it and/or modify it</span>
+<span class="c"># under the terms of the GNU Lesser General Public License as published by the</span>
+<span class="c"># Free Software Foundation, either version 2.1 of the License, or (at your</span>
+<span class="c"># option) any later version.</span>
+<span class="c">#</span>
+<span class="c"># astroid is distributed in the hope that it will be useful, but</span>
+<span class="c"># WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or</span>
+<span class="c"># FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License</span>
+<span class="c"># for more details.</span>
+<span class="c">#</span>
+<span class="c"># You should have received a copy of the GNU Lesser General Public License along</span>
+<span class="c"># with astroid. If not, see &lt;http://www.gnu.org/licenses/&gt;.</span>
+<span class="sd">&quot;&quot;&quot;Python Abstract Syntax Tree New Generation</span>
+
+<span class="sd">The aim of this module is to provide a common base representation of</span>
+<span class="sd">python source code for projects such as pychecker, pyreverse,</span>
+<span class="sd">pylint... Well, actually the development of this library is essentially</span>
+<span class="sd">governed by pylint&#39;s needs.</span>
+
+<span class="sd">It extends class defined in the python&#39;s _ast module with some</span>
+<span class="sd">additional methods and attributes. Instance attributes are added by a</span>
+<span class="sd">builder object, which can either generate extended ast (let&#39;s call</span>
+<span class="sd">them astroid ;) by visiting an existent ast tree or by inspecting living</span>
+<span class="sd">object. Methods are added by monkey patching ast classes.</span>
+
+<span class="sd">Main modules are:</span>
+
+<span class="sd">* nodes and scoped_nodes for more information about methods and</span>
+<span class="sd">  attributes added to different node classes</span>
+
+<span class="sd">* the manager contains a high level object to get astroid trees from</span>
+<span class="sd">  source files and living objects. It maintains a cache of previously</span>
+<span class="sd">  constructed tree for quick access</span>
+
+<span class="sd">* builder contains the class responsible to build astroid trees</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="n">__doctype__</span> <span class="o">=</span> <span class="s">&quot;restructuredtext en&quot;</span>
+
+<span class="kn">import</span> <span class="nn">sys</span>
+<span class="kn">import</span> <span class="nn">re</span>
+<span class="kn">from</span> <span class="nn">operator</span> <span class="kn">import</span> <span class="n">attrgetter</span>
+
+<span class="c"># WARNING: internal imports order matters !</span>
+
+<span class="c"># make all exception classes accessible from astroid package</span>
+<span class="kn">from</span> <span class="nn">astroid.exceptions</span> <span class="kn">import</span> <span class="o">*</span>
+
+<span class="c"># make all node classes accessible from astroid package</span>
+<span class="kn">from</span> <span class="nn">astroid.nodes</span> <span class="kn">import</span> <span class="o">*</span>
+
+<span class="c"># trigger extra monkey-patching</span>
+<span class="kn">from</span> <span class="nn">astroid</span> <span class="kn">import</span> <span class="n">inference</span>
+
+<span class="c"># more stuff available</span>
+<span class="kn">from</span> <span class="nn">astroid</span> <span class="kn">import</span> <span class="n">raw_building</span>
+<span class="kn">from</span> <span class="nn">astroid.bases</span> <span class="kn">import</span> <span class="n">YES</span><span class="p">,</span> <span class="n">Instance</span><span class="p">,</span> <span class="n">BoundMethod</span><span class="p">,</span> <span class="n">UnboundMethod</span>
+<span class="kn">from</span> <span class="nn">astroid.node_classes</span> <span class="kn">import</span> <span class="n">are_exclusive</span><span class="p">,</span> <span class="n">unpack_infer</span>
+<span class="kn">from</span> <span class="nn">astroid.scoped_nodes</span> <span class="kn">import</span> <span class="n">builtin_lookup</span>
+
+<span class="c"># make a manager instance (borg) as well as Project and Package classes</span>
+<span class="c"># accessible from astroid package</span>
+<span class="kn">from</span> <span class="nn">astroid.manager</span> <span class="kn">import</span> <span class="n">AstroidManager</span><span class="p">,</span> <span class="n">Project</span>
+<span class="n">MANAGER</span> <span class="o">=</span> <span class="n">AstroidManager</span><span class="p">()</span>
+<span class="k">del</span> <span class="n">AstroidManager</span>
+
+<span class="c"># transform utilities (filters and decorator)</span>
+
+<div class="viewcode-block" id="AsStringRegexpPredicate"><a class="viewcode-back" href="../extending.html#astroid.AsStringRegexpPredicate">[docs]</a><span class="k">class</span> <span class="nc">AsStringRegexpPredicate</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Class to be used as predicate that may be given to `register_transform`</span>
+
+<span class="sd">    First argument is a regular expression that will be searched against the `as_string`</span>
+<span class="sd">    representation of the node onto which it&#39;s applied.</span>
+
+<span class="sd">    If specified, the second argument is an `attrgetter` expression that will be</span>
+<span class="sd">    applied on the node first to get the actual node on which `as_string` should</span>
+<span class="sd">    be called.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">regexp</span><span class="p">,</span> <span class="n">expression</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">regexp</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="n">regexp</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">expression</span> <span class="o">=</span> <span class="n">expression</span>
+
+    <span class="k">def</span> <span class="nf">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">node</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">expression</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">node</span> <span class="o">=</span> <span class="n">attrgetter</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">expression</span><span class="p">)(</span><span class="n">node</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">regexp</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">node</span><span class="o">.</span><span class="n">as_string</span><span class="p">())</span>
+</div>
+<div class="viewcode-block" id="inference_tip"><a class="viewcode-back" href="../extending.html#astroid.inference_tip">[docs]</a><span class="k">def</span> <span class="nf">inference_tip</span><span class="p">(</span><span class="n">infer_function</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Given an instance specific inference function, return a function to be</span>
+<span class="sd">    given to MANAGER.register_transform to set this inference function.</span>
+
+<span class="sd">    Typical usage</span>
+
+<span class="sd">    .. sourcecode:: python</span>
+
+<span class="sd">       MANAGER.register_transform(CallFunc, inference_tip(infer_named_tuple),</span>
+<span class="sd">                                  AsStringRegexpPredicate(&#39;namedtuple&#39;, &#39;func&#39;))</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">transform</span><span class="p">(</span><span class="n">node</span><span class="p">,</span> <span class="n">infer_function</span><span class="o">=</span><span class="n">infer_function</span><span class="p">):</span>
+        <span class="n">node</span><span class="o">.</span><span class="n">_explicit_inference</span> <span class="o">=</span> <span class="n">infer_function</span>
+        <span class="k">return</span> <span class="n">node</span>
+    <span class="k">return</span> <span class="n">transform</span>
+
+<span class="c"># load brain plugins</span></div>
+<span class="kn">from</span> <span class="nn">os</span> <span class="kn">import</span> <span class="n">listdir</span>
+<span class="kn">from</span> <span class="nn">os.path</span> <span class="kn">import</span> <span class="n">join</span><span class="p">,</span> <span class="n">dirname</span>
+<span class="n">BRAIN_MODULES_DIR</span> <span class="o">=</span> <span class="n">join</span><span class="p">(</span><span class="n">dirname</span><span class="p">(</span><span class="n">__file__</span><span class="p">),</span> <span class="s">&#39;brain&#39;</span><span class="p">)</span>
+<span class="k">if</span> <span class="n">BRAIN_MODULES_DIR</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">sys</span><span class="o">.</span><span class="n">path</span><span class="p">:</span>
+    <span class="c"># add it to the end of the list so user path take precedence</span>
+    <span class="n">sys</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">BRAIN_MODULES_DIR</span><span class="p">)</span>
+<span class="c"># load modules in this directory</span>
+<span class="k">for</span> <span class="n">module</span> <span class="ow">in</span> <span class="n">listdir</span><span class="p">(</span><span class="n">BRAIN_MODULES_DIR</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">module</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s">&#39;.py&#39;</span><span class="p">):</span>
+        <span class="nb">__import__</span><span class="p">(</span><span class="n">module</span><span class="p">[:</span><span class="o">-</span><span class="mi">3</span><span class="p">])</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../index.html">Astroid 0.24.4 documentation</a> &raquo;</li>
+          <li><a href="index.html" >Module code</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2013, Logilab S.A..
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.2.1.
+    </div>
+  </body>
+</html>

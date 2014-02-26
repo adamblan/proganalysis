@@ -1,0 +1,37 @@
+\begin{theindex}
+\def\bigletter#1{{\Large\sffamily#1}\nopagebreak\vspace{1mm}}
+
+  \bigletter A
+  \item AsStringRegexpPredicate (class in astroid), \hyperpage{7}
+
+  \indexspace
+  \bigletter C
+  \item CallContext (class in inference), \hyperpage{4}
+
+  \indexspace
+  \bigletter I
+  \item infer\_argument() (inference.CallContext method), \hyperpage{4}
+  \item infer\_arguments() (in module inference), \hyperpage{4}
+  \item infer\_ass() (in module inference), \hyperpage{4}
+  \item infer\_augassign() (in module inference), \hyperpage{4}
+  \item infer\_binop() (in module inference), \hyperpage{4}
+  \item infer\_callfunc() (in module inference), \hyperpage{4}
+  \item infer\_empty\_node() (in module inference), \hyperpage{4}
+  \item infer\_end() (in module inference), \hyperpage{4}
+  \item infer\_from() (in module inference), \hyperpage{4}
+  \item infer\_getattr() (in module inference), \hyperpage{4}
+  \item infer\_global() (in module inference), \hyperpage{4}
+  \item infer\_import() (in module inference), \hyperpage{4}
+  \item infer\_index() (in module inference), \hyperpage{4}
+  \item infer\_name() (in module inference), \hyperpage{4}
+  \item infer\_name\_module() (in module inference), \hyperpage{5}
+  \item infer\_subscript() (in module inference), \hyperpage{5}
+  \item infer\_unaryop() (in module inference), \hyperpage{5}
+  \item inference (module), \hyperpage{4}
+  \item inference\_tip() (in module astroid), \hyperpage{7}
+
+  \indexspace
+  \bigletter R
+  \item register\_transform() (astroid.manager.AstroidManager method), \hyperpage{7}
+
+\end{theindex}

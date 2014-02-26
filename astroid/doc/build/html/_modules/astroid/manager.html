@@ -1,0 +1,395 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>astroid.manager &mdash; Astroid 0.24.4 documentation</title>
+    
+    <link rel="stylesheet" href="../../_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../',
+        VERSION:     '0.24.4',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../_static/doctools.js"></script>
+    <link rel="top" title="Astroid 0.24.4 documentation" href="../../index.html" />
+    <link rel="up" title="astroid" href="../astroid.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../index.html">Astroid 0.24.4 documentation</a> &raquo;</li>
+          <li><a href="../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../astroid.html" accesskey="U">astroid</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for astroid.manager</h1><div class="highlight"><pre>
+<span class="c"># copyright 2003-2013 LOGILAB S.A. (Paris, FRANCE), all rights reserved.</span>
+<span class="c"># contact http://www.logilab.fr/ -- mailto:contact@logilab.fr</span>
+<span class="c">#</span>
+<span class="c"># This file is part of astroid.</span>
+<span class="c">#</span>
+<span class="c"># astroid is free software: you can redistribute it and/or modify it</span>
+<span class="c"># under the terms of the GNU Lesser General Public License as published by the</span>
+<span class="c"># Free Software Foundation, either version 2.1 of the License, or (at your</span>
+<span class="c"># option) any later version.</span>
+<span class="c">#</span>
+<span class="c"># astroid is distributed in the hope that it will be useful, but</span>
+<span class="c"># WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or</span>
+<span class="c"># FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License</span>
+<span class="c"># for more details.</span>
+<span class="c">#</span>
+<span class="c"># You should have received a copy of the GNU Lesser General Public License along</span>
+<span class="c"># with astroid. If not, see &lt;http://www.gnu.org/licenses/&gt;.</span>
+<span class="sd">&quot;&quot;&quot;astroid manager: avoid multiple astroid build of a same module when</span>
+<span class="sd">possible by providing a class responsible to get astroid representation</span>
+<span class="sd">from various source and using a cache of built modules)</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="n">__docformat__</span> <span class="o">=</span> <span class="s">&quot;restructuredtext en&quot;</span>
+
+<span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">from</span> <span class="nn">os.path</span> <span class="kn">import</span> <span class="n">dirname</span><span class="p">,</span> <span class="n">join</span><span class="p">,</span> <span class="n">isdir</span><span class="p">,</span> <span class="n">exists</span>
+
+<span class="kn">from</span> <span class="nn">logilab.common.modutils</span> <span class="kn">import</span> <span class="n">NoSourceFile</span><span class="p">,</span> <span class="n">is_python_source</span><span class="p">,</span> \
+     <span class="n">file_from_modpath</span><span class="p">,</span> <span class="n">load_module_from_name</span><span class="p">,</span> <span class="n">modpath_from_file</span><span class="p">,</span> \
+     <span class="n">get_module_files</span><span class="p">,</span> <span class="n">get_source_file</span><span class="p">,</span> <span class="n">zipimport</span>
+<span class="kn">from</span> <span class="nn">logilab.common.configuration</span> <span class="kn">import</span> <span class="n">OptionsProviderMixIn</span>
+
+<span class="kn">from</span> <span class="nn">astroid.exceptions</span> <span class="kn">import</span> <span class="n">AstroidBuildingException</span>
+
+<span class="k">def</span> <span class="nf">astroid_wrapper</span><span class="p">(</span><span class="n">func</span><span class="p">,</span> <span class="n">modname</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;wrapper to give to AstroidManager.project_from_files&quot;&quot;&quot;</span>
+    <span class="k">print</span> <span class="s">&#39;parsing </span><span class="si">%s</span><span class="s">...&#39;</span> <span class="o">%</span> <span class="n">modname</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">func</span><span class="p">(</span><span class="n">modname</span><span class="p">)</span>
+    <span class="k">except</span> <span class="n">AstroidBuildingException</span><span class="p">,</span> <span class="n">exc</span><span class="p">:</span>
+        <span class="k">print</span> <span class="n">exc</span>
+    <span class="k">except</span> <span class="ne">Exception</span><span class="p">,</span> <span class="n">exc</span><span class="p">:</span>
+        <span class="kn">import</span> <span class="nn">traceback</span>
+        <span class="n">traceback</span><span class="o">.</span><span class="n">print_exc</span><span class="p">()</span>
+
+<span class="k">def</span> <span class="nf">_silent_no_wrap</span><span class="p">(</span><span class="n">func</span><span class="p">,</span> <span class="n">modname</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;silent wrapper that doesn&#39;t do anything; can be used for tests&quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">func</span><span class="p">(</span><span class="n">modname</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">safe_repr</span><span class="p">(</span><span class="n">obj</span><span class="p">):</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">return</span> <span class="nb">repr</span><span class="p">(</span><span class="n">obj</span><span class="p">)</span>
+    <span class="k">except</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s">&#39;???&#39;</span>
+
+
+
+<span class="k">class</span> <span class="nc">AstroidManager</span><span class="p">(</span><span class="n">OptionsProviderMixIn</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;the astroid manager, responsible to build astroid from files</span>
+<span class="sd">     or modules.</span>
+
+<span class="sd">    Use the Borg pattern.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">name</span> <span class="o">=</span> <span class="s">&#39;astroid loader&#39;</span>
+    <span class="n">options</span> <span class="o">=</span> <span class="p">((</span><span class="s">&quot;ignore&quot;</span><span class="p">,</span>
+                <span class="p">{</span><span class="s">&#39;type&#39;</span> <span class="p">:</span> <span class="s">&quot;csv&quot;</span><span class="p">,</span> <span class="s">&#39;metavar&#39;</span> <span class="p">:</span> <span class="s">&quot;&lt;file&gt;&quot;</span><span class="p">,</span>
+                 <span class="s">&#39;dest&#39;</span> <span class="p">:</span> <span class="s">&quot;black_list&quot;</span><span class="p">,</span> <span class="s">&quot;default&quot;</span> <span class="p">:</span> <span class="p">(</span><span class="s">&#39;CVS&#39;</span><span class="p">,),</span>
+                 <span class="s">&#39;help&#39;</span> <span class="p">:</span> <span class="s">&quot;add &lt;file&gt; (may be a directory) to the black list</span><span class="se">\</span>
+<span class="s">. It should be a base name, not a path. You may set this option multiple times</span><span class="se">\</span>
+<span class="s">.&quot;</span><span class="p">}),</span>
+               <span class="p">(</span><span class="s">&quot;project&quot;</span><span class="p">,</span>
+                <span class="p">{</span><span class="s">&#39;default&#39;</span><span class="p">:</span> <span class="s">&quot;No Name&quot;</span><span class="p">,</span> <span class="s">&#39;type&#39;</span> <span class="p">:</span> <span class="s">&#39;string&#39;</span><span class="p">,</span> <span class="s">&#39;short&#39;</span><span class="p">:</span> <span class="s">&#39;p&#39;</span><span class="p">,</span>
+                 <span class="s">&#39;metavar&#39;</span> <span class="p">:</span> <span class="s">&#39;&lt;project name&gt;&#39;</span><span class="p">,</span>
+                 <span class="s">&#39;help&#39;</span> <span class="p">:</span> <span class="s">&#39;set the project name.&#39;</span><span class="p">}),</span>
+               <span class="p">)</span>
+    <span class="n">brain</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">__dict__</span> <span class="o">=</span> <span class="n">AstroidManager</span><span class="o">.</span><span class="n">brain</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">__dict__</span><span class="p">:</span>
+            <span class="n">OptionsProviderMixIn</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">load_defaults</span><span class="p">()</span>
+            <span class="c"># NOTE: cache entries are added by the [re]builder</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">astroid_cache</span> <span class="o">=</span> <span class="p">{}</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_mod_file_cache</span> <span class="o">=</span> <span class="p">{}</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">transforms</span> <span class="o">=</span> <span class="p">{}</span>
+
+    <span class="k">def</span> <span class="nf">ast_from_file</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">filepath</span><span class="p">,</span> <span class="n">modname</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">fallback</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">source</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;given a module name, return the astroid object&quot;&quot;&quot;</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">filepath</span> <span class="o">=</span> <span class="n">get_source_file</span><span class="p">(</span><span class="n">filepath</span><span class="p">,</span> <span class="n">include_no_ext</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+            <span class="n">source</span> <span class="o">=</span> <span class="bp">True</span>
+        <span class="k">except</span> <span class="n">NoSourceFile</span><span class="p">:</span>
+            <span class="k">pass</span>
+        <span class="k">if</span> <span class="n">modname</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">modname</span> <span class="o">=</span> <span class="s">&#39;.&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">modpath_from_file</span><span class="p">(</span><span class="n">filepath</span><span class="p">))</span>
+            <span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
+                <span class="n">modname</span> <span class="o">=</span> <span class="n">filepath</span>
+        <span class="k">if</span> <span class="n">modname</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">astroid_cache</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">astroid_cache</span><span class="p">[</span><span class="n">modname</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">source</span><span class="p">:</span>
+            <span class="kn">from</span> <span class="nn">astroid.builder</span> <span class="kn">import</span> <span class="n">AstroidBuilder</span>
+            <span class="k">return</span> <span class="n">AstroidBuilder</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">file_build</span><span class="p">(</span><span class="n">filepath</span><span class="p">,</span> <span class="n">modname</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">fallback</span> <span class="ow">and</span> <span class="n">modname</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">ast_from_module_name</span><span class="p">(</span><span class="n">modname</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="n">AstroidBuildingException</span><span class="p">(</span><span class="s">&#39;unable to get astroid for file </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span>
+                                     <span class="n">filepath</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">ast_from_module_name</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">modname</span><span class="p">,</span> <span class="n">context_file</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;given a module name, return the astroid object&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">modname</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">astroid_cache</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">astroid_cache</span><span class="p">[</span><span class="n">modname</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">modname</span> <span class="o">==</span> <span class="s">&#39;__main__&#39;</span><span class="p">:</span>
+            <span class="kn">from</span> <span class="nn">astroid.builder</span> <span class="kn">import</span> <span class="n">AstroidBuilder</span>
+            <span class="k">return</span> <span class="n">AstroidBuilder</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">string_build</span><span class="p">(</span><span class="s">&#39;&#39;</span><span class="p">,</span> <span class="n">modname</span><span class="p">)</span>
+        <span class="n">old_cwd</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">getcwd</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">context_file</span><span class="p">:</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">chdir</span><span class="p">(</span><span class="n">dirname</span><span class="p">(</span><span class="n">context_file</span><span class="p">))</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">filepath</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">file_from_module_name</span><span class="p">(</span><span class="n">modname</span><span class="p">,</span> <span class="n">context_file</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">filepath</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">is_python_source</span><span class="p">(</span><span class="n">filepath</span><span class="p">):</span>
+                <span class="n">module</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">zip_import_data</span><span class="p">(</span><span class="n">filepath</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">module</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+                    <span class="k">return</span> <span class="n">module</span>
+            <span class="k">if</span> <span class="n">filepath</span> <span class="ow">is</span> <span class="bp">None</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">is_python_source</span><span class="p">(</span><span class="n">filepath</span><span class="p">):</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">module</span> <span class="o">=</span> <span class="n">load_module_from_name</span><span class="p">(</span><span class="n">modname</span><span class="p">)</span>
+                <span class="k">except</span> <span class="ne">Exception</span><span class="p">,</span> <span class="n">ex</span><span class="p">:</span>
+                    <span class="n">msg</span> <span class="o">=</span> <span class="s">&#39;Unable to load module </span><span class="si">%s</span><span class="s"> (</span><span class="si">%s</span><span class="s">)&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">modname</span><span class="p">,</span> <span class="n">ex</span><span class="p">)</span>
+                    <span class="k">raise</span> <span class="n">AstroidBuildingException</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+                <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">ast_from_module</span><span class="p">(</span><span class="n">module</span><span class="p">,</span> <span class="n">modname</span><span class="p">)</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">ast_from_file</span><span class="p">(</span><span class="n">filepath</span><span class="p">,</span> <span class="n">modname</span><span class="p">,</span> <span class="n">fallback</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span>
+        <span class="k">finally</span><span class="p">:</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">chdir</span><span class="p">(</span><span class="n">old_cwd</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">zip_import_data</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">filepath</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">zipimport</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">None</span>
+        <span class="kn">from</span> <span class="nn">astroid.builder</span> <span class="kn">import</span> <span class="n">AstroidBuilder</span>
+        <span class="n">builder</span> <span class="o">=</span> <span class="n">AstroidBuilder</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">ext</span> <span class="ow">in</span> <span class="p">(</span><span class="s">&#39;.zip&#39;</span><span class="p">,</span> <span class="s">&#39;.egg&#39;</span><span class="p">):</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">eggpath</span><span class="p">,</span> <span class="n">resource</span> <span class="o">=</span> <span class="n">filepath</span><span class="o">.</span><span class="n">rsplit</span><span class="p">(</span><span class="n">ext</span> <span class="o">+</span> <span class="s">&#39;/&#39;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+            <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">importer</span> <span class="o">=</span> <span class="n">zipimport</span><span class="o">.</span><span class="n">zipimporter</span><span class="p">(</span><span class="n">eggpath</span> <span class="o">+</span> <span class="n">ext</span><span class="p">)</span>
+                <span class="n">zmodname</span> <span class="o">=</span> <span class="n">resource</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s">&#39;/&#39;</span><span class="p">,</span> <span class="s">&#39;.&#39;</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">importer</span><span class="o">.</span><span class="n">is_package</span><span class="p">(</span><span class="n">resource</span><span class="p">):</span>
+                    <span class="n">zmodname</span> <span class="o">=</span>  <span class="n">zmodname</span> <span class="o">+</span> <span class="s">&#39;.__init__&#39;</span>
+                <span class="n">module</span> <span class="o">=</span> <span class="n">builder</span><span class="o">.</span><span class="n">string_build</span><span class="p">(</span><span class="n">importer</span><span class="o">.</span><span class="n">get_source</span><span class="p">(</span><span class="n">resource</span><span class="p">),</span>
+                                              <span class="n">zmodname</span><span class="p">,</span> <span class="n">filepath</span><span class="p">)</span>
+                <span class="k">return</span> <span class="n">module</span>
+            <span class="k">except</span><span class="p">:</span>
+                <span class="k">continue</span>
+        <span class="k">return</span> <span class="bp">None</span>
+
+    <span class="k">def</span> <span class="nf">file_from_module_name</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">modname</span><span class="p">,</span> <span class="n">contextfile</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">value</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_mod_file_cache</span><span class="p">[(</span><span class="n">modname</span><span class="p">,</span> <span class="n">contextfile</span><span class="p">)]</span>
+        <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">value</span> <span class="o">=</span> <span class="n">file_from_modpath</span><span class="p">(</span><span class="n">modname</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;.&#39;</span><span class="p">),</span>
+                                          <span class="n">context_file</span><span class="o">=</span><span class="n">contextfile</span><span class="p">)</span>
+            <span class="k">except</span> <span class="ne">ImportError</span><span class="p">,</span> <span class="n">ex</span><span class="p">:</span>
+                <span class="n">msg</span> <span class="o">=</span> <span class="s">&#39;Unable to load module </span><span class="si">%s</span><span class="s"> (</span><span class="si">%s</span><span class="s">)&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">modname</span><span class="p">,</span> <span class="n">ex</span><span class="p">)</span>
+                <span class="n">value</span> <span class="o">=</span> <span class="n">AstroidBuildingException</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_mod_file_cache</span><span class="p">[(</span><span class="n">modname</span><span class="p">,</span> <span class="n">contextfile</span><span class="p">)]</span> <span class="o">=</span> <span class="n">value</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">AstroidBuildingException</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="n">value</span>
+        <span class="k">return</span> <span class="n">value</span>
+
+    <span class="k">def</span> <span class="nf">ast_from_module</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">module</span><span class="p">,</span> <span class="n">modname</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;given an imported module, return the astroid object&quot;&quot;&quot;</span>
+        <span class="n">modname</span> <span class="o">=</span> <span class="n">modname</span> <span class="ow">or</span> <span class="n">module</span><span class="o">.</span><span class="n">__name__</span>
+        <span class="k">if</span> <span class="n">modname</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">astroid_cache</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">astroid_cache</span><span class="p">[</span><span class="n">modname</span><span class="p">]</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="c"># some builtin modules don&#39;t have __file__ attribute</span>
+            <span class="n">filepath</span> <span class="o">=</span> <span class="n">module</span><span class="o">.</span><span class="n">__file__</span>
+            <span class="k">if</span> <span class="n">is_python_source</span><span class="p">(</span><span class="n">filepath</span><span class="p">):</span>
+                <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">ast_from_file</span><span class="p">(</span><span class="n">filepath</span><span class="p">,</span> <span class="n">modname</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+            <span class="k">pass</span>
+        <span class="kn">from</span> <span class="nn">astroid.builder</span> <span class="kn">import</span> <span class="n">AstroidBuilder</span>
+        <span class="k">return</span> <span class="n">AstroidBuilder</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">module_build</span><span class="p">(</span><span class="n">module</span><span class="p">,</span> <span class="n">modname</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">ast_from_class</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">klass</span><span class="p">,</span> <span class="n">modname</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;get astroid for the given class&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">modname</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">modname</span> <span class="o">=</span> <span class="n">klass</span><span class="o">.</span><span class="n">__module__</span>
+            <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">AstroidBuildingException</span><span class="p">(</span>
+                    <span class="s">&#39;Unable to get module for class </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">safe_repr</span><span class="p">(</span><span class="n">klass</span><span class="p">))</span>
+        <span class="n">modastroid</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ast_from_module_name</span><span class="p">(</span><span class="n">modname</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">modastroid</span><span class="o">.</span><span class="n">getattr</span><span class="p">(</span><span class="n">klass</span><span class="o">.</span><span class="n">__name__</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span> <span class="c"># XXX</span>
+
+
+    <span class="k">def</span> <span class="nf">infer_ast_from_something</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">,</span> <span class="n">context</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;infer astroid for the given class&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="s">&#39;__class__&#39;</span><span class="p">)</span> <span class="ow">and</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="nb">type</span><span class="p">):</span>
+            <span class="n">klass</span> <span class="o">=</span> <span class="n">obj</span><span class="o">.</span><span class="n">__class__</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">klass</span> <span class="o">=</span> <span class="n">obj</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">modname</span> <span class="o">=</span> <span class="n">klass</span><span class="o">.</span><span class="n">__module__</span>
+        <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">AstroidBuildingException</span><span class="p">(</span>
+                <span class="s">&#39;Unable to get module for </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">safe_repr</span><span class="p">(</span><span class="n">klass</span><span class="p">))</span>
+        <span class="k">except</span> <span class="ne">Exception</span><span class="p">,</span> <span class="n">ex</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">AstroidBuildingException</span><span class="p">(</span>
+                <span class="s">&#39;Unexpected error while retrieving module for </span><span class="si">%s</span><span class="s">: </span><span class="si">%s</span><span class="s">&#39;</span>
+                <span class="o">%</span> <span class="p">(</span><span class="n">safe_repr</span><span class="p">(</span><span class="n">klass</span><span class="p">),</span> <span class="n">ex</span><span class="p">))</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">name</span> <span class="o">=</span> <span class="n">klass</span><span class="o">.</span><span class="n">__name__</span>
+        <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">AstroidBuildingException</span><span class="p">(</span>
+                <span class="s">&#39;Unable to get name for </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">safe_repr</span><span class="p">(</span><span class="n">klass</span><span class="p">))</span>
+        <span class="k">except</span> <span class="ne">Exception</span><span class="p">,</span> <span class="n">ex</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">AstroidBuildingException</span><span class="p">(</span>
+                <span class="s">&#39;Unexpected error while retrieving name for </span><span class="si">%s</span><span class="s">: </span><span class="si">%s</span><span class="s">&#39;</span>
+                <span class="o">%</span> <span class="p">(</span><span class="n">safe_repr</span><span class="p">(</span><span class="n">klass</span><span class="p">),</span> <span class="n">ex</span><span class="p">))</span>
+        <span class="c"># take care, on living object __module__ is regularly wrong :(</span>
+        <span class="n">modastroid</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ast_from_module_name</span><span class="p">(</span><span class="n">modname</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">klass</span> <span class="ow">is</span> <span class="n">obj</span><span class="p">:</span>
+            <span class="k">for</span>  <span class="n">infered</span> <span class="ow">in</span> <span class="n">modastroid</span><span class="o">.</span><span class="n">igetattr</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
+                <span class="k">yield</span> <span class="n">infered</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">infered</span> <span class="ow">in</span> <span class="n">modastroid</span><span class="o">.</span><span class="n">igetattr</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
+                <span class="k">yield</span> <span class="n">infered</span><span class="o">.</span><span class="n">instanciate_class</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">project_from_files</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">files</span><span class="p">,</span> <span class="n">func_wrapper</span><span class="o">=</span><span class="n">astroid_wrapper</span><span class="p">,</span>
+                           <span class="n">project_name</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">black_list</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;return a Project from a list of files or modules&quot;&quot;&quot;</span>
+        <span class="c"># build the project representation</span>
+        <span class="n">project_name</span> <span class="o">=</span> <span class="n">project_name</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">project</span>
+        <span class="n">black_list</span> <span class="o">=</span> <span class="n">black_list</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">black_list</span>
+        <span class="n">project</span> <span class="o">=</span> <span class="n">Project</span><span class="p">(</span><span class="n">project_name</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">something</span> <span class="ow">in</span> <span class="n">files</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">exists</span><span class="p">(</span><span class="n">something</span><span class="p">):</span>
+                <span class="n">fpath</span> <span class="o">=</span> <span class="n">file_from_modpath</span><span class="p">(</span><span class="n">something</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;.&#39;</span><span class="p">))</span>
+            <span class="k">elif</span> <span class="n">isdir</span><span class="p">(</span><span class="n">something</span><span class="p">):</span>
+                <span class="n">fpath</span> <span class="o">=</span> <span class="n">join</span><span class="p">(</span><span class="n">something</span><span class="p">,</span> <span class="s">&#39;__init__.py&#39;</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">fpath</span> <span class="o">=</span> <span class="n">something</span>
+            <span class="n">astroid</span> <span class="o">=</span> <span class="n">func_wrapper</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ast_from_file</span><span class="p">,</span> <span class="n">fpath</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">astroid</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="c"># XXX why is first file defining the project.path ?</span>
+            <span class="n">project</span><span class="o">.</span><span class="n">path</span> <span class="o">=</span> <span class="n">project</span><span class="o">.</span><span class="n">path</span> <span class="ow">or</span> <span class="n">astroid</span><span class="o">.</span><span class="n">file</span>
+            <span class="n">project</span><span class="o">.</span><span class="n">add_module</span><span class="p">(</span><span class="n">astroid</span><span class="p">)</span>
+            <span class="n">base_name</span> <span class="o">=</span> <span class="n">astroid</span><span class="o">.</span><span class="n">name</span>
+            <span class="c"># recurse in package except if __init__ was explicitly given</span>
+            <span class="k">if</span> <span class="n">astroid</span><span class="o">.</span><span class="n">package</span> <span class="ow">and</span> <span class="n">something</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s">&#39;__init__&#39;</span><span class="p">)</span> <span class="o">==</span> <span class="o">-</span><span class="mi">1</span><span class="p">:</span>
+                <span class="c"># recurse on others packages / modules if this is a package</span>
+                <span class="k">for</span> <span class="n">fpath</span> <span class="ow">in</span> <span class="n">get_module_files</span><span class="p">(</span><span class="n">dirname</span><span class="p">(</span><span class="n">astroid</span><span class="o">.</span><span class="n">file</span><span class="p">),</span>
+                                              <span class="n">black_list</span><span class="p">):</span>
+                    <span class="n">astroid</span> <span class="o">=</span> <span class="n">func_wrapper</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ast_from_file</span><span class="p">,</span> <span class="n">fpath</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="n">astroid</span> <span class="ow">is</span> <span class="bp">None</span> <span class="ow">or</span> <span class="n">astroid</span><span class="o">.</span><span class="n">name</span> <span class="o">==</span> <span class="n">base_name</span><span class="p">:</span>
+                        <span class="k">continue</span>
+                    <span class="n">project</span><span class="o">.</span><span class="n">add_module</span><span class="p">(</span><span class="n">astroid</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">project</span>
+
+<div class="viewcode-block" id="AstroidManager.register_transform"><a class="viewcode-back" href="../../extending.html#astroid.manager.AstroidManager.register_transform">[docs]</a>    <span class="k">def</span> <span class="nf">register_transform</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">node_class</span><span class="p">,</span> <span class="n">transform</span><span class="p">,</span> <span class="n">predicate</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Register `transform(node)` function to be applied on the given</span>
+<span class="sd">        Astroid&#39;s `node_class` if `predicate` is None or return a true value</span>
+<span class="sd">        when called with the node as argument.</span>
+
+<span class="sd">        The transform function may return a value which is then used to</span>
+<span class="sd">        substitute the original node in the tree.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">transforms</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="n">node_class</span><span class="p">,</span> <span class="p">[])</span><span class="o">.</span><span class="n">append</span><span class="p">(</span> <span class="p">(</span><span class="n">transform</span><span class="p">,</span> <span class="n">predicate</span><span class="p">)</span> <span class="p">)</span>
+</div>
+<span class="k">class</span> <span class="nc">Project</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;a project handle a set of modules / packages&quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s">&#39;&#39;</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="n">name</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">path</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">modules</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">locals</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">__getitem__</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">locals</span><span class="o">.</span><span class="n">__getitem__</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">__iter__</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">locals</span><span class="o">.</span><span class="n">__iter__</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">values</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">locals</span><span class="o">.</span><span class="n">values</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">keys</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">locals</span><span class="o">.</span><span class="n">keys</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">items</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">locals</span><span class="o">.</span><span class="n">items</span>
+
+    <span class="k">def</span> <span class="nf">add_module</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">node</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">locals</span><span class="p">[</span><span class="n">node</span><span class="o">.</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">node</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">modules</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">node</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">get_module</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">locals</span><span class="p">[</span><span class="n">name</span><span class="p">]</span>
+
+    <span class="k">def</span> <span class="nf">get_children</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">modules</span>
+
+    <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;&lt;Project </span><span class="si">%r</span><span class="s"> at </span><span class="si">%s</span><span class="s"> (</span><span class="si">%s</span><span class="s"> modules)&gt;&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="nb">id</span><span class="p">(</span><span class="bp">self</span><span class="p">),</span>
+                                                    <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">modules</span><span class="p">))</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../index.html">Astroid 0.24.4 documentation</a> &raquo;</li>
+          <li><a href="../index.html" >Module code</a> &raquo;</li>
+          <li><a href="../astroid.html" >astroid</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2013, Logilab S.A..
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.2.1.
+    </div>
+  </body>
+</html>

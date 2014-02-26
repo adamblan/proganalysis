@@ -1,0 +1,311 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>Inference on the AST in Astroid &mdash; Astroid 0.24.4 documentation</title>
+    
+    <link rel="stylesheet" href="_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    './',
+        VERSION:     '0.24.4',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <link rel="top" title="Astroid 0.24.4 documentation" href="index.html" />
+    <link rel="next" title="Extending Astroid Syntax Tree" href="extending.html" />
+    <link rel="prev" title="Welcome to Astroid’s documentation!" href="index.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="right" >
+          <a href="extending.html" title="Extending Astroid Syntax Tree"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="index.html" title="Welcome to Astroid’s documentation!"
+             accesskey="P">previous</a> |</li>
+        <li><a href="index.html">Astroid 0.24.4 documentation</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <div class="section" id="inference-on-the-ast-in-astroid">
+<span id="inference"></span><h1>Inference on the AST in Astroid<a class="headerlink" href="#inference-on-the-ast-in-astroid" title="Permalink to this headline">¶</a></h1>
+<div class="section" id="introduction">
+<h2>Introduction<a class="headerlink" href="#introduction" title="Permalink to this headline">¶</a></h2>
+<div class="section" id="what-where-is-inference">
+<h3>What/where is &#8216;inference&#8217; ?<a class="headerlink" href="#what-where-is-inference" title="Permalink to this headline">¶</a></h3>
+<p>Well, not <em>inference</em> in general, but inference within <em>astroid</em> in
+particular... Basically this is extracting information about a node of
+the AST from the node&#8217;s context so as to make its description
+richer. For example it can be most useful to know that this
+identifier node <em>toto</em> can have values among 1, 2.0, and &#8220;yesterday&#8221;.</p>
+<p>The inference process entry-point is the <tt class="xref py py-meth docutils literal"><span class="pre">NodeNG.infer()</span></tt> method
+of the AST nodes which is defined in <tt class="xref py py-class docutils literal"><span class="pre">NodeNG</span></tt> the base class
+for AST nodes. This method return a generator which yields the
+successive inference for the node when going through the possible
+execution branches.</p>
+</div>
+<div class="section" id="how-does-it-work">
+<h3>How does it work ?<a class="headerlink" href="#how-does-it-work" title="Permalink to this headline">¶</a></h3>
+<div class="admonition-todo admonition" id="index-0">
+<p class="first admonition-title">Todo</p>
+<p class="last">double chek this <tt class="xref py py-func docutils literal"><span class="pre">infer()</span></tt> is monkey-patched point</p>
+</div>
+<p>The <tt class="xref py py-meth docutils literal"><span class="pre">NodeNG.infer()</span></tt> method either delegates the actual inference
+to the instance specific method <tt class="xref py py-meth docutils literal"><span class="pre">NodeNG._explicit_inference()</span></tt>
+when not <cite>None</cite> or to the overloaded <tt class="xref py py-meth docutils literal"><span class="pre">_infer()</span></tt> method. The
+important point to note is that the <tt class="xref py py-meth docutils literal"><span class="pre">_infer()</span></tt> is <em>not</em> defined in
+the nodes classes but is instead <em>monkey-patched</em> in the
+<tt class="file docutils literal"><span class="pre">inference.py</span></tt> so that the inference implementation is not
+scattered to the multiple node classes.</p>
+<div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p class="last">The inference method are to be wrapped in decorators like
+<tt class="xref py py-func docutils literal"><span class="pre">path_wrapper()</span></tt> which update the inference context.</p>
+</div>
+<p>In both cases the <tt class="xref py py-meth docutils literal"><span class="pre">infer()</span></tt> returns a <em>generator</em> which iterates
+through the various <em>values</em> the node could take.</p>
+<div class="admonition-todo admonition" id="index-1">
+<p class="first admonition-title">Todo</p>
+<p class="last">introduce the <a class="reference internal" href="#inference.infer_end" title="inference.infer_end"><tt class="xref py py-func docutils literal"><span class="pre">inference.infer_end()</span></tt></a> method and
+terminal nodes along with the recursive call</p>
+</div>
+<p>In some case the value yielded will not be a node found in the AST of the node
+but an instance of a special inference class such as <tt class="xref py py-class docutils literal"><span class="pre">_Yes</span></tt>,
+<tt class="xref py py-class docutils literal"><span class="pre">Instance</span></tt>,etc. Those classes are defined in <tt class="file docutils literal"><span class="pre">bases.py</span></tt>.</p>
+<p>Namely, the special singleton <tt class="xref py py-obj docutils literal"><span class="pre">YES()</span></tt> is yielded when the inference reaches
+a point where t can&#8217;t follow the code and is so unable to guess a value ; and
+instances of the <tt class="xref py py-class docutils literal"><span class="pre">Instance</span></tt> class are yielded when the current node is
+infered to be an instance of some known class.</p>
+</div>
+<div class="section" id="what-does-it-rely-upon">
+<h3>What does it rely upon ?<a class="headerlink" href="#what-does-it-rely-upon" title="Permalink to this headline">¶</a></h3>
+<p>In order to perform such an inference the <tt class="xref py py-meth docutils literal"><span class="pre">infer()</span></tt> methods rely
+on several more global objects, mainly :</p>
+<dl class="docutils">
+<dt><tt class="xref py py-obj docutils literal"><span class="pre">MANAGER</span></tt></dt>
+<dd>is a unique global instance of the class <tt class="xref py py-class docutils literal"><span class="pre">AstroidManager</span></tt>,
+it helps managing and reusing inference needed / done somewhere
+else than the current invocation node.</dd>
+<dt><tt class="xref py py-class docutils literal"><span class="pre">InferenceContext</span></tt></dt>
+<dd>Instances of this class can be passed to the <tt class="xref py py-meth docutils literal"><span class="pre">infer()</span></tt> methods
+to convey aditionnal information on the context of the current
+node, and especially the current scope.</dd>
+</dl>
+<div class="admonition-todo admonition" id="index-2">
+<p class="first admonition-title">Todo</p>
+<p class="last">Write something about <tt class="xref py py-class docutils literal"><span class="pre">Scope</span></tt> objects and
+<tt class="xref py py-meth docutils literal"><span class="pre">NodeNG.lookup()</span></tt> method.</p>
+</div>
+</div>
+</div>
+<div class="section" id="api-documentation">
+<h2>API documentation<a class="headerlink" href="#api-documentation" title="Permalink to this headline">¶</a></h2>
+<p>Here is the annotaded API documentation extracted from the source code
+of the <a class="reference internal" href="#module-inference" title="inference"><tt class="xref py py-mod docutils literal"><span class="pre">inference</span></tt></a>.</p>
+<div class="admonition-todo admonition" id="index-3">
+<p class="first admonition-title">Todo</p>
+<p class="last">actually annotate the doc to structure its approach</p>
+</div>
+<span class="target" id="module-inference"></span><p>this module contains a set of functions to handle inference on astroid trees</p>
+<dl class="class">
+<dt id="inference.CallContext">
+<em class="property">class </em><tt class="descclassname">inference.</tt><tt class="descname">CallContext</tt><big>(</big><em>args</em>, <em>starargs</em>, <em>dstarargs</em><big>)</big><a class="reference internal" href="_modules/inference.html#CallContext"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#inference.CallContext" title="Permalink to this definition">¶</a></dt>
+<dd><p>when inferring a function call, this class is used to remember values
+given as argument</p>
+<dl class="method">
+<dt id="inference.CallContext.infer_argument">
+<tt class="descname">infer_argument</tt><big>(</big><em>funcnode</em>, <em>name</em>, <em>context</em><big>)</big><a class="reference internal" href="_modules/inference.html#CallContext.infer_argument"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#inference.CallContext.infer_argument" title="Permalink to this definition">¶</a></dt>
+<dd><p>infer a function argument value according to the call context</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="function">
+<dt id="inference.infer_arguments">
+<tt class="descclassname">inference.</tt><tt class="descname">infer_arguments</tt><big>(</big><em>self</em>, <em>context=None</em><big>)</big><a class="reference internal" href="_modules/inference.html#infer_arguments"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#inference.infer_arguments" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="function">
+<dt id="inference.infer_ass">
+<tt class="descclassname">inference.</tt><tt class="descname">infer_ass</tt><big>(</big><em>self</em>, <em>context=None</em><big>)</big><a class="reference internal" href="_modules/inference.html#infer_ass"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#inference.infer_ass" title="Permalink to this definition">¶</a></dt>
+<dd><p>infer a AssName/AssAttr: need to inspect the RHS part of the
+assign node</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="inference.infer_augassign">
+<tt class="descclassname">inference.</tt><tt class="descname">infer_augassign</tt><big>(</big><em>self</em>, <em>context=None</em><big>)</big><a class="reference internal" href="_modules/inference.html#infer_augassign"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#inference.infer_augassign" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="function">
+<dt id="inference.infer_binop">
+<tt class="descclassname">inference.</tt><tt class="descname">infer_binop</tt><big>(</big><em>self</em>, <em>context=None</em><big>)</big><a class="reference internal" href="_modules/inference.html#infer_binop"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#inference.infer_binop" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="function">
+<dt id="inference.infer_callfunc">
+<tt class="descclassname">inference.</tt><tt class="descname">infer_callfunc</tt><big>(</big><em>self</em>, <em>context=None</em><big>)</big><a class="reference internal" href="_modules/inference.html#infer_callfunc"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#inference.infer_callfunc" title="Permalink to this definition">¶</a></dt>
+<dd><p>infer a CallFunc node by trying to guess what the function returns</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="inference.infer_empty_node">
+<tt class="descclassname">inference.</tt><tt class="descname">infer_empty_node</tt><big>(</big><em>self</em>, <em>context=None</em><big>)</big><a class="reference internal" href="_modules/inference.html#infer_empty_node"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#inference.infer_empty_node" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="function">
+<dt id="inference.infer_end">
+<tt class="descclassname">inference.</tt><tt class="descname">infer_end</tt><big>(</big><em>self</em>, <em>context=None</em><big>)</big><a class="reference internal" href="_modules/inference.html#infer_end"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#inference.infer_end" title="Permalink to this definition">¶</a></dt>
+<dd><p>inference&#8217;s end for node such as Module, Class, Function, Const...</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="inference.infer_from">
+<tt class="descclassname">inference.</tt><tt class="descname">infer_from</tt><big>(</big><em>self</em>, <em>context=None</em>, <em>asname=True</em><big>)</big><a class="reference internal" href="_modules/inference.html#infer_from"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#inference.infer_from" title="Permalink to this definition">¶</a></dt>
+<dd><p>infer a From nodes: return the imported module/object</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="inference.infer_getattr">
+<tt class="descclassname">inference.</tt><tt class="descname">infer_getattr</tt><big>(</big><em>self</em>, <em>context=None</em><big>)</big><a class="reference internal" href="_modules/inference.html#infer_getattr"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#inference.infer_getattr" title="Permalink to this definition">¶</a></dt>
+<dd><p>infer a Getattr node by using getattr on the associated object</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="inference.infer_global">
+<tt class="descclassname">inference.</tt><tt class="descname">infer_global</tt><big>(</big><em>self</em>, <em>context=None</em><big>)</big><a class="reference internal" href="_modules/inference.html#infer_global"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#inference.infer_global" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="function">
+<dt id="inference.infer_import">
+<tt class="descclassname">inference.</tt><tt class="descname">infer_import</tt><big>(</big><em>self</em>, <em>context=None</em>, <em>asname=True</em><big>)</big><a class="reference internal" href="_modules/inference.html#infer_import"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#inference.infer_import" title="Permalink to this definition">¶</a></dt>
+<dd><p>infer an Import node: return the imported module/object</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="inference.infer_index">
+<tt class="descclassname">inference.</tt><tt class="descname">infer_index</tt><big>(</big><em>self</em>, <em>context=None</em><big>)</big><a class="reference internal" href="_modules/inference.html#infer_index"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#inference.infer_index" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="function">
+<dt id="inference.infer_name">
+<tt class="descclassname">inference.</tt><tt class="descname">infer_name</tt><big>(</big><em>self</em>, <em>context=None</em><big>)</big><a class="reference internal" href="_modules/inference.html#infer_name"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#inference.infer_name" title="Permalink to this definition">¶</a></dt>
+<dd><p>infer a Name: use name lookup rules</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="inference.infer_name_module">
+<tt class="descclassname">inference.</tt><tt class="descname">infer_name_module</tt><big>(</big><em>self</em>, <em>name</em><big>)</big><a class="reference internal" href="_modules/inference.html#infer_name_module"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#inference.infer_name_module" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="function">
+<dt id="inference.infer_subscript">
+<tt class="descclassname">inference.</tt><tt class="descname">infer_subscript</tt><big>(</big><em>self</em>, <em>context=None</em><big>)</big><a class="reference internal" href="_modules/inference.html#infer_subscript"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#inference.infer_subscript" title="Permalink to this definition">¶</a></dt>
+<dd><p>infer simple subscription such as [1,2,3][0] or (1,2,3)[-1]</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="inference.infer_unaryop">
+<tt class="descclassname">inference.</tt><tt class="descname">infer_unaryop</tt><big>(</big><em>self</em>, <em>context=None</em><big>)</big><a class="reference internal" href="_modules/inference.html#infer_unaryop"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#inference.infer_unaryop" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+  <h3><a href="index.html">Table Of Contents</a></h3>
+  <ul>
+<li><a class="reference internal" href="#">Inference on the AST in Astroid</a><ul>
+<li><a class="reference internal" href="#introduction">Introduction</a><ul>
+<li><a class="reference internal" href="#what-where-is-inference">What/where is &#8216;inference&#8217; ?</a></li>
+<li><a class="reference internal" href="#how-does-it-work">How does it work ?</a></li>
+<li><a class="reference internal" href="#what-does-it-rely-upon">What does it rely upon ?</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#api-documentation">API documentation</a></li>
+</ul>
+</li>
+</ul>
+
+  <h4>Previous topic</h4>
+  <p class="topless"><a href="index.html"
+                        title="previous chapter">Welcome to Astroid&#8217;s documentation!</a></p>
+  <h4>Next topic</h4>
+  <p class="topless"><a href="extending.html"
+                        title="next chapter">Extending Astroid Syntax Tree</a></p>
+  <h3>This Page</h3>
+  <ul class="this-page-menu">
+    <li><a href="_sources/inference.txt"
+           rel="nofollow">Show Source</a></li>
+  </ul>
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="right" >
+          <a href="extending.html" title="Extending Astroid Syntax Tree"
+             >next</a> |</li>
+        <li class="right" >
+          <a href="index.html" title="Welcome to Astroid’s documentation!"
+             >previous</a> |</li>
+        <li><a href="index.html">Astroid 0.24.4 documentation</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2013, Logilab S.A..
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.2.1.
+    </div>
+  </body>
+</html>

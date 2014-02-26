@@ -1,0 +1,155 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>Extending Astroid Syntax Tree &mdash; Astroid 0.24.4 documentation</title>
+    
+    <link rel="stylesheet" href="_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    './',
+        VERSION:     '0.24.4',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <link rel="top" title="Astroid 0.24.4 documentation" href="index.html" />
+    <link rel="prev" title="Inference on the AST in Astroid" href="inference.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="right" >
+          <a href="inference.html" title="Inference on the AST in Astroid"
+             accesskey="P">previous</a> |</li>
+        <li><a href="index.html">Astroid 0.24.4 documentation</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <div class="section" id="extending-astroid-syntax-tree">
+<h1>Extending Astroid Syntax Tree<a class="headerlink" href="#extending-astroid-syntax-tree" title="Permalink to this headline">¶</a></h1>
+<p>Sometimes Astroid will miss some potentially important information
+users may wish to add, for instance with the standard library
+<cite>hashlib</cite> module. In some other cases, users may want to customize the
+way inference works, for instance to explain Astroid that calls to
+<cite>collections.namedtuple</cite> are returning a class with some known
+attributes.</p>
+<p>Modifications in the AST are now possible using the using the generic
+transformation API. You can find examples in the <cite>brain/</cite>
+subdirectory, which are taken from the the <a class="reference external" href="https://bitbucket.org/logilab/pylint-brain">pylint-brain</a> project.</p>
+<p>Transformation functions are registered using the <cite>register_transform</cite> method of
+the Astroid manager:</p>
+<dl class="method">
+<dt id="astroid.manager.AstroidManager.register_transform">
+<tt class="descclassname">AstroidManager.</tt><tt class="descname">register_transform</tt><big>(</big><em>node_class</em>, <em>transform</em>, <em>predicate=None</em><big>)</big><a class="reference internal" href="_modules/astroid/manager.html#AstroidManager.register_transform"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#astroid.manager.AstroidManager.register_transform" title="Permalink to this definition">¶</a></dt>
+<dd><p>Register <cite>transform(node)</cite> function to be applied on the given
+Astroid&#8217;s <cite>node_class</cite> if <cite>predicate</cite> is None or return a true value
+when called with the node as argument.</p>
+<p>The transform function may return a value which is then used to
+substitute the original node in the tree.</p>
+</dd></dl>
+
+<p>To add filtering based on the <cite>as_string</cite> representation of the node
+in addition to the type, the <a class="reference internal" href="#astroid.AsStringRegexpPredicate" title="astroid.AsStringRegexpPredicate"><tt class="xref py py-class docutils literal"><span class="pre">astroid.AsStringRegexpPredicate</span></tt></a>
+predicate object can be used.</p>
+<dl class="class">
+<dt id="astroid.AsStringRegexpPredicate">
+<em class="property">class </em><tt class="descclassname">astroid.</tt><tt class="descname">AsStringRegexpPredicate</tt><big>(</big><em>regexp</em>, <em>expression=None</em><big>)</big><a class="reference internal" href="_modules/astroid.html#AsStringRegexpPredicate"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#astroid.AsStringRegexpPredicate" title="Permalink to this definition">¶</a></dt>
+<dd><p>Class to be used as predicate that may be given to <cite>register_transform</cite></p>
+<p>First argument is a regular expression that will be searched against the <cite>as_string</cite>
+representation of the node onto which it&#8217;s applied.</p>
+<p>If specified, the second argument is an <cite>attrgetter</cite> expression that will be
+applied on the node first to get the actual node on which <cite>as_string</cite> should
+be called.</p>
+</dd></dl>
+
+<p>Last but not least, the <tt class="xref py py-func docutils literal"><span class="pre">inference_tip()</span></tt> function is there to register
+a custom inference function.</p>
+<dl class="function">
+<dt id="astroid.inference_tip">
+<tt class="descclassname">astroid.</tt><tt class="descname">inference_tip</tt><big>(</big><em>infer_function</em><big>)</big><a class="reference internal" href="_modules/astroid.html#inference_tip"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#astroid.inference_tip" title="Permalink to this definition">¶</a></dt>
+<dd><p>Given an instance specific inference function, return a function to be
+given to MANAGER.register_transform to set this inference function.</p>
+<p>Typical usage</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="n">MANAGER</span><span class="o">.</span><span class="n">register_transform</span><span class="p">(</span><span class="n">CallFunc</span><span class="p">,</span> <span class="n">inference_tip</span><span class="p">(</span><span class="n">infer_named_tuple</span><span class="p">),</span>
+                           <span class="n">AsStringRegexpPredicate</span><span class="p">(</span><span class="s">&#39;namedtuple&#39;</span><span class="p">,</span> <span class="s">&#39;func&#39;</span><span class="p">))</span>
+</pre></div>
+</div>
+</dd></dl>
+
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+  <h4>Previous topic</h4>
+  <p class="topless"><a href="inference.html"
+                        title="previous chapter">Inference on the AST in Astroid</a></p>
+  <h3>This Page</h3>
+  <ul class="this-page-menu">
+    <li><a href="_sources/extending.txt"
+           rel="nofollow">Show Source</a></li>
+  </ul>
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="right" >
+          <a href="inference.html" title="Inference on the AST in Astroid"
+             >previous</a> |</li>
+        <li><a href="index.html">Astroid 0.24.4 documentation</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2013, Logilab S.A..
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.2.1.
+    </div>
+  </body>
+</html>

@@ -1,0 +1,480 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>inference &mdash; Astroid 0.24.4 documentation</title>
+    
+    <link rel="stylesheet" href="../_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../',
+        VERSION:     '0.24.4',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../_static/jquery.js"></script>
+    <script type="text/javascript" src="../_static/underscore.js"></script>
+    <script type="text/javascript" src="../_static/doctools.js"></script>
+    <link rel="top" title="Astroid 0.24.4 documentation" href="../index.html" />
+    <link rel="up" title="Module code" href="index.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../index.html">Astroid 0.24.4 documentation</a> &raquo;</li>
+          <li><a href="index.html" accesskey="U">Module code</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for inference</h1><div class="highlight"><pre>
+<span class="c"># copyright 2003-2013 LOGILAB S.A. (Paris, FRANCE), all rights reserved.</span>
+<span class="c"># contact http://www.logilab.fr/ -- mailto:contact@logilab.fr</span>
+<span class="c">#</span>
+<span class="c"># This file is part of astroid.</span>
+<span class="c">#</span>
+<span class="c"># astroid is free software: you can redistribute it and/or modify it</span>
+<span class="c"># under the terms of the GNU Lesser General Public License as published by the</span>
+<span class="c"># Free Software Foundation, either version 2.1 of the License, or (at your</span>
+<span class="c"># option) any later version.</span>
+<span class="c">#</span>
+<span class="c"># astroid is distributed in the hope that it will be useful, but</span>
+<span class="c"># WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or</span>
+<span class="c"># FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License</span>
+<span class="c"># for more details.</span>
+<span class="c">#</span>
+<span class="c"># You should have received a copy of the GNU Lesser General Public License along</span>
+<span class="c"># with astroid. If not, see &lt;http://www.gnu.org/licenses/&gt;.</span>
+<span class="sd">&quot;&quot;&quot;this module contains a set of functions to handle inference on astroid trees</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="n">__doctype__</span> <span class="o">=</span> <span class="s">&quot;restructuredtext en&quot;</span>
+
+<span class="kn">from</span> <span class="nn">itertools</span> <span class="kn">import</span> <span class="n">chain</span>
+
+<span class="kn">from</span> <span class="nn">astroid</span> <span class="kn">import</span> <span class="n">nodes</span>
+
+<span class="kn">from</span> <span class="nn">astroid.manager</span> <span class="kn">import</span> <span class="n">AstroidManager</span>
+<span class="kn">from</span> <span class="nn">astroid.exceptions</span> <span class="kn">import</span> <span class="p">(</span><span class="n">AstroidError</span><span class="p">,</span>
+    <span class="n">InferenceError</span><span class="p">,</span> <span class="n">NoDefault</span><span class="p">,</span> <span class="n">NotFoundError</span><span class="p">,</span> <span class="n">UnresolvableName</span><span class="p">)</span>
+<span class="kn">from</span> <span class="nn">astroid.bases</span> <span class="kn">import</span> <span class="n">YES</span><span class="p">,</span> <span class="n">Instance</span><span class="p">,</span> <span class="n">InferenceContext</span><span class="p">,</span> \
+     <span class="n">_infer_stmts</span><span class="p">,</span> <span class="n">copy_context</span><span class="p">,</span> <span class="n">path_wrapper</span><span class="p">,</span> <span class="n">raise_if_nothing_infered</span>
+<span class="kn">from</span> <span class="nn">astroid.protocols</span> <span class="kn">import</span> <span class="n">_arguments_infer_argname</span>
+
+<span class="n">MANAGER</span> <span class="o">=</span> <span class="n">AstroidManager</span><span class="p">()</span>
+
+
+<div class="viewcode-block" id="CallContext"><a class="viewcode-back" href="../inference.html#inference.CallContext">[docs]</a><span class="k">class</span> <span class="nc">CallContext</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;when inferring a function call, this class is used to remember values</span>
+<span class="sd">    given as argument</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">starargs</span><span class="p">,</span> <span class="n">dstarargs</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">args</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">nargs</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">arg</span> <span class="ow">in</span> <span class="n">args</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">arg</span><span class="p">,</span> <span class="n">nodes</span><span class="o">.</span><span class="n">Keyword</span><span class="p">):</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">nargs</span><span class="p">[</span><span class="n">arg</span><span class="o">.</span><span class="n">arg</span><span class="p">]</span> <span class="o">=</span> <span class="n">arg</span><span class="o">.</span><span class="n">value</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">arg</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">starargs</span> <span class="o">=</span> <span class="n">starargs</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">dstarargs</span> <span class="o">=</span> <span class="n">dstarargs</span>
+
+<div class="viewcode-block" id="CallContext.infer_argument"><a class="viewcode-back" href="../inference.html#inference.CallContext.infer_argument">[docs]</a>    <span class="k">def</span> <span class="nf">infer_argument</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">funcnode</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;infer a function argument value according to the call context&quot;&quot;&quot;</span>
+        <span class="c"># 1. search in named keywords</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">nargs</span><span class="p">[</span><span class="n">name</span><span class="p">]</span><span class="o">.</span><span class="n">infer</span><span class="p">(</span><span class="n">context</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
+            <span class="c"># Function.args.args can be None in astroid (means that we don&#39;t have</span>
+            <span class="c"># information on argnames)</span>
+            <span class="n">argindex</span> <span class="o">=</span> <span class="n">funcnode</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">find_argname</span><span class="p">(</span><span class="n">name</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="k">if</span> <span class="n">argindex</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="c"># 2. first argument of instance/class method</span>
+                <span class="k">if</span> <span class="n">argindex</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">funcnode</span><span class="o">.</span><span class="n">type</span> <span class="ow">in</span> <span class="p">(</span><span class="s">&#39;method&#39;</span><span class="p">,</span> <span class="s">&#39;classmethod&#39;</span><span class="p">):</span>
+                    <span class="k">if</span> <span class="n">context</span><span class="o">.</span><span class="n">boundnode</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+                        <span class="n">boundnode</span> <span class="o">=</span> <span class="n">context</span><span class="o">.</span><span class="n">boundnode</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="c"># XXX can do better ?</span>
+                        <span class="n">boundnode</span> <span class="o">=</span> <span class="n">funcnode</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">frame</span><span class="p">()</span>
+                    <span class="k">if</span> <span class="n">funcnode</span><span class="o">.</span><span class="n">type</span> <span class="o">==</span> <span class="s">&#39;method&#39;</span><span class="p">:</span>
+                        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">boundnode</span><span class="p">,</span> <span class="n">Instance</span><span class="p">):</span>
+                            <span class="n">boundnode</span> <span class="o">=</span> <span class="n">Instance</span><span class="p">(</span><span class="n">boundnode</span><span class="p">)</span>
+                        <span class="k">return</span> <span class="nb">iter</span><span class="p">((</span><span class="n">boundnode</span><span class="p">,))</span>
+                    <span class="k">if</span> <span class="n">funcnode</span><span class="o">.</span><span class="n">type</span> <span class="o">==</span> <span class="s">&#39;classmethod&#39;</span><span class="p">:</span>
+                        <span class="k">return</span> <span class="nb">iter</span><span class="p">((</span><span class="n">boundnode</span><span class="p">,))</span>
+                <span class="c"># 2. search arg index</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">args</span><span class="p">[</span><span class="n">argindex</span><span class="p">]</span><span class="o">.</span><span class="n">infer</span><span class="p">(</span><span class="n">context</span><span class="p">)</span>
+                <span class="k">except</span> <span class="ne">IndexError</span><span class="p">:</span>
+                    <span class="k">pass</span>
+                <span class="c"># 3. search in *args (.starargs)</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">starargs</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+                    <span class="n">its</span> <span class="o">=</span> <span class="p">[]</span>
+                    <span class="k">for</span> <span class="n">infered</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">starargs</span><span class="o">.</span><span class="n">infer</span><span class="p">(</span><span class="n">context</span><span class="p">):</span>
+                        <span class="k">if</span> <span class="n">infered</span> <span class="ow">is</span> <span class="n">YES</span><span class="p">:</span>
+                            <span class="n">its</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">YES</span><span class="p">,))</span>
+                            <span class="k">continue</span>
+                        <span class="k">try</span><span class="p">:</span>
+                            <span class="n">its</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">infered</span><span class="o">.</span><span class="n">getitem</span><span class="p">(</span><span class="n">argindex</span><span class="p">,</span> <span class="n">context</span><span class="p">)</span><span class="o">.</span><span class="n">infer</span><span class="p">(</span><span class="n">context</span><span class="p">))</span>
+                        <span class="k">except</span> <span class="p">(</span><span class="n">InferenceError</span><span class="p">,</span> <span class="ne">AttributeError</span><span class="p">):</span>
+                            <span class="n">its</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">YES</span><span class="p">,))</span>
+                        <span class="k">except</span> <span class="p">(</span><span class="ne">IndexError</span><span class="p">,</span> <span class="ne">TypeError</span><span class="p">):</span>
+                            <span class="k">continue</span>
+                    <span class="k">if</span> <span class="n">its</span><span class="p">:</span>
+                        <span class="k">return</span> <span class="n">chain</span><span class="p">(</span><span class="o">*</span><span class="n">its</span><span class="p">)</span>
+        <span class="c"># 4. XXX search in **kwargs (.dstarargs)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">dstarargs</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">its</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">for</span> <span class="n">infered</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">dstarargs</span><span class="o">.</span><span class="n">infer</span><span class="p">(</span><span class="n">context</span><span class="p">):</span>
+                <span class="k">if</span> <span class="n">infered</span> <span class="ow">is</span> <span class="n">YES</span><span class="p">:</span>
+                    <span class="n">its</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">YES</span><span class="p">,))</span>
+                    <span class="k">continue</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">its</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">infered</span><span class="o">.</span><span class="n">getitem</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">context</span><span class="p">)</span><span class="o">.</span><span class="n">infer</span><span class="p">(</span><span class="n">context</span><span class="p">))</span>
+                <span class="k">except</span> <span class="p">(</span><span class="n">InferenceError</span><span class="p">,</span> <span class="ne">AttributeError</span><span class="p">):</span>
+                    <span class="n">its</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">YES</span><span class="p">,))</span>
+                <span class="k">except</span> <span class="p">(</span><span class="ne">IndexError</span><span class="p">,</span> <span class="ne">TypeError</span><span class="p">):</span>
+                    <span class="k">continue</span>
+            <span class="k">if</span> <span class="n">its</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">chain</span><span class="p">(</span><span class="o">*</span><span class="n">its</span><span class="p">)</span>
+        <span class="c"># 5. */** argument, (Tuple or Dict)</span>
+        <span class="k">if</span> <span class="n">name</span> <span class="o">==</span> <span class="n">funcnode</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">vararg</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nb">iter</span><span class="p">((</span><span class="n">nodes</span><span class="o">.</span><span class="n">const_factory</span><span class="p">(())))</span>
+        <span class="k">if</span> <span class="n">name</span> <span class="o">==</span> <span class="n">funcnode</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">kwarg</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nb">iter</span><span class="p">((</span><span class="n">nodes</span><span class="o">.</span><span class="n">const_factory</span><span class="p">({})))</span>
+        <span class="c"># 6. return default value if any</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">funcnode</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">default_value</span><span class="p">(</span><span class="n">name</span><span class="p">)</span><span class="o">.</span><span class="n">infer</span><span class="p">(</span><span class="n">context</span><span class="p">)</span>
+        <span class="k">except</span> <span class="n">NoDefault</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">InferenceError</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+
+
+<span class="c"># .infer method ###############################################################</span>
+
+</div></div>
+<div class="viewcode-block" id="infer_end"><a class="viewcode-back" href="../inference.html#inference.infer_end">[docs]</a><span class="k">def</span> <span class="nf">infer_end</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">context</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;inference&#39;s end for node such as Module, Class, Function, Const...</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">yield</span> <span class="bp">self</span></div>
+<span class="n">nodes</span><span class="o">.</span><span class="n">Module</span><span class="o">.</span><span class="n">_infer</span> <span class="o">=</span> <span class="n">infer_end</span>
+<span class="n">nodes</span><span class="o">.</span><span class="n">Class</span><span class="o">.</span><span class="n">_infer</span> <span class="o">=</span> <span class="n">infer_end</span>
+<span class="n">nodes</span><span class="o">.</span><span class="n">Function</span><span class="o">.</span><span class="n">_infer</span> <span class="o">=</span> <span class="n">infer_end</span>
+<span class="n">nodes</span><span class="o">.</span><span class="n">Lambda</span><span class="o">.</span><span class="n">_infer</span> <span class="o">=</span> <span class="n">infer_end</span>
+<span class="n">nodes</span><span class="o">.</span><span class="n">Const</span><span class="o">.</span><span class="n">_infer</span> <span class="o">=</span> <span class="n">infer_end</span>
+<span class="n">nodes</span><span class="o">.</span><span class="n">List</span><span class="o">.</span><span class="n">_infer</span> <span class="o">=</span> <span class="n">infer_end</span>
+<span class="n">nodes</span><span class="o">.</span><span class="n">Tuple</span><span class="o">.</span><span class="n">_infer</span> <span class="o">=</span> <span class="n">infer_end</span>
+<span class="n">nodes</span><span class="o">.</span><span class="n">Dict</span><span class="o">.</span><span class="n">_infer</span> <span class="o">=</span> <span class="n">infer_end</span>
+<span class="n">nodes</span><span class="o">.</span><span class="n">Set</span><span class="o">.</span><span class="n">_infer</span> <span class="o">=</span> <span class="n">infer_end</span>
+
+<div class="viewcode-block" id="infer_name"><a class="viewcode-back" href="../inference.html#inference.infer_name">[docs]</a><span class="k">def</span> <span class="nf">infer_name</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">context</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;infer a Name: use name lookup rules&quot;&quot;&quot;</span>
+    <span class="n">frame</span><span class="p">,</span> <span class="n">stmts</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">lookup</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">stmts</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">UnresolvableName</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+    <span class="n">context</span> <span class="o">=</span> <span class="n">context</span><span class="o">.</span><span class="n">clone</span><span class="p">()</span>
+    <span class="n">context</span><span class="o">.</span><span class="n">lookupname</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">name</span>
+    <span class="k">return</span> <span class="n">_infer_stmts</span><span class="p">(</span><span class="n">stmts</span><span class="p">,</span> <span class="n">context</span><span class="p">,</span> <span class="n">frame</span><span class="p">)</span></div>
+<span class="n">nodes</span><span class="o">.</span><span class="n">Name</span><span class="o">.</span><span class="n">_infer</span> <span class="o">=</span> <span class="n">path_wrapper</span><span class="p">(</span><span class="n">infer_name</span><span class="p">)</span>
+<span class="n">nodes</span><span class="o">.</span><span class="n">AssName</span><span class="o">.</span><span class="n">infer_lhs</span> <span class="o">=</span> <span class="n">infer_name</span> <span class="c"># won&#39;t work with a path wrapper</span>
+
+
+<div class="viewcode-block" id="infer_callfunc"><a class="viewcode-back" href="../inference.html#inference.infer_callfunc">[docs]</a><span class="k">def</span> <span class="nf">infer_callfunc</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">context</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;infer a CallFunc node by trying to guess what the function returns&quot;&quot;&quot;</span>
+    <span class="n">callcontext</span> <span class="o">=</span> <span class="n">context</span><span class="o">.</span><span class="n">clone</span><span class="p">()</span>
+    <span class="n">callcontext</span><span class="o">.</span><span class="n">callcontext</span> <span class="o">=</span> <span class="n">CallContext</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">args</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">starargs</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">kwargs</span><span class="p">)</span>
+    <span class="n">callcontext</span><span class="o">.</span><span class="n">boundnode</span> <span class="o">=</span> <span class="bp">None</span>
+    <span class="k">for</span> <span class="n">callee</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">func</span><span class="o">.</span><span class="n">infer</span><span class="p">(</span><span class="n">context</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">callee</span> <span class="ow">is</span> <span class="n">YES</span><span class="p">:</span>
+            <span class="k">yield</span> <span class="n">callee</span>
+            <span class="k">continue</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">callee</span><span class="p">,</span> <span class="s">&#39;infer_call_result&#39;</span><span class="p">):</span>
+                <span class="k">for</span> <span class="n">infered</span> <span class="ow">in</span> <span class="n">callee</span><span class="o">.</span><span class="n">infer_call_result</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">callcontext</span><span class="p">):</span>
+                    <span class="k">yield</span> <span class="n">infered</span>
+        <span class="k">except</span> <span class="n">InferenceError</span><span class="p">:</span>
+            <span class="c">## XXX log error ?</span>
+            <span class="k">continue</span></div>
+<span class="n">nodes</span><span class="o">.</span><span class="n">CallFunc</span><span class="o">.</span><span class="n">_infer</span> <span class="o">=</span> <span class="n">path_wrapper</span><span class="p">(</span><span class="n">raise_if_nothing_infered</span><span class="p">(</span><span class="n">infer_callfunc</span><span class="p">))</span>
+
+
+<div class="viewcode-block" id="infer_import"><a class="viewcode-back" href="../inference.html#inference.infer_import">[docs]</a><span class="k">def</span> <span class="nf">infer_import</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">context</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">asname</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;infer an Import node: return the imported module/object&quot;&quot;&quot;</span>
+    <span class="n">name</span> <span class="o">=</span> <span class="n">context</span><span class="o">.</span><span class="n">lookupname</span>
+    <span class="k">if</span> <span class="n">name</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">InferenceError</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">asname</span><span class="p">:</span>
+        <span class="k">yield</span> <span class="bp">self</span><span class="o">.</span><span class="n">do_import_module</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">real_name</span><span class="p">(</span><span class="n">name</span><span class="p">))</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">yield</span> <span class="bp">self</span><span class="o">.</span><span class="n">do_import_module</span><span class="p">(</span><span class="n">name</span><span class="p">)</span></div>
+<span class="n">nodes</span><span class="o">.</span><span class="n">Import</span><span class="o">.</span><span class="n">_infer</span> <span class="o">=</span> <span class="n">path_wrapper</span><span class="p">(</span><span class="n">infer_import</span><span class="p">)</span>
+
+<div class="viewcode-block" id="infer_name_module"><a class="viewcode-back" href="../inference.html#inference.infer_name_module">[docs]</a><span class="k">def</span> <span class="nf">infer_name_module</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+    <span class="n">context</span> <span class="o">=</span> <span class="n">InferenceContext</span><span class="p">()</span>
+    <span class="n">context</span><span class="o">.</span><span class="n">lookupname</span> <span class="o">=</span> <span class="n">name</span>
+    <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">infer</span><span class="p">(</span><span class="n">context</span><span class="p">,</span> <span class="n">asname</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span></div>
+<span class="n">nodes</span><span class="o">.</span><span class="n">Import</span><span class="o">.</span><span class="n">infer_name_module</span> <span class="o">=</span> <span class="n">infer_name_module</span>
+
+
+<div class="viewcode-block" id="infer_from"><a class="viewcode-back" href="../inference.html#inference.infer_from">[docs]</a><span class="k">def</span> <span class="nf">infer_from</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">context</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">asname</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;infer a From nodes: return the imported module/object&quot;&quot;&quot;</span>
+    <span class="n">name</span> <span class="o">=</span> <span class="n">context</span><span class="o">.</span><span class="n">lookupname</span>
+    <span class="k">if</span> <span class="n">name</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">InferenceError</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">asname</span><span class="p">:</span>
+        <span class="n">name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">real_name</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+    <span class="n">module</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">do_import_module</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">modname</span><span class="p">)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">context</span> <span class="o">=</span> <span class="n">copy_context</span><span class="p">(</span><span class="n">context</span><span class="p">)</span>
+        <span class="n">context</span><span class="o">.</span><span class="n">lookupname</span> <span class="o">=</span> <span class="n">name</span>
+        <span class="k">return</span> <span class="n">_infer_stmts</span><span class="p">(</span><span class="n">module</span><span class="o">.</span><span class="n">getattr</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">ignore_locals</span><span class="o">=</span><span class="n">module</span> <span class="ow">is</span> <span class="bp">self</span><span class="o">.</span><span class="n">root</span><span class="p">()),</span> <span class="n">context</span><span class="p">)</span>
+    <span class="k">except</span> <span class="n">NotFoundError</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">InferenceError</span><span class="p">(</span><span class="n">name</span><span class="p">)</span></div>
+<span class="n">nodes</span><span class="o">.</span><span class="n">From</span><span class="o">.</span><span class="n">_infer</span> <span class="o">=</span> <span class="n">path_wrapper</span><span class="p">(</span><span class="n">infer_from</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="infer_getattr"><a class="viewcode-back" href="../inference.html#inference.infer_getattr">[docs]</a><span class="k">def</span> <span class="nf">infer_getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">context</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;infer a Getattr node by using getattr on the associated object&quot;&quot;&quot;</span>
+    <span class="c">#context = context.clone()</span>
+    <span class="k">for</span> <span class="n">owner</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">infer</span><span class="p">(</span><span class="n">context</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">owner</span> <span class="ow">is</span> <span class="n">YES</span><span class="p">:</span>
+            <span class="k">yield</span> <span class="n">owner</span>
+            <span class="k">continue</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">context</span><span class="o">.</span><span class="n">boundnode</span> <span class="o">=</span> <span class="n">owner</span>
+            <span class="k">for</span> <span class="n">obj</span> <span class="ow">in</span> <span class="n">owner</span><span class="o">.</span><span class="n">igetattr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">attrname</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
+                <span class="k">yield</span> <span class="n">obj</span>
+            <span class="n">context</span><span class="o">.</span><span class="n">boundnode</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="k">except</span> <span class="p">(</span><span class="n">NotFoundError</span><span class="p">,</span> <span class="n">InferenceError</span><span class="p">):</span>
+            <span class="n">context</span><span class="o">.</span><span class="n">boundnode</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+            <span class="c"># XXX method / function</span>
+            <span class="n">context</span><span class="o">.</span><span class="n">boundnode</span> <span class="o">=</span> <span class="bp">None</span></div>
+<span class="n">nodes</span><span class="o">.</span><span class="n">Getattr</span><span class="o">.</span><span class="n">_infer</span> <span class="o">=</span> <span class="n">path_wrapper</span><span class="p">(</span><span class="n">raise_if_nothing_infered</span><span class="p">(</span><span class="n">infer_getattr</span><span class="p">))</span>
+<span class="n">nodes</span><span class="o">.</span><span class="n">AssAttr</span><span class="o">.</span><span class="n">infer_lhs</span> <span class="o">=</span> <span class="n">raise_if_nothing_infered</span><span class="p">(</span><span class="n">infer_getattr</span><span class="p">)</span> <span class="c"># # won&#39;t work with a path wrapper</span>
+
+
+<div class="viewcode-block" id="infer_global"><a class="viewcode-back" href="../inference.html#inference.infer_global">[docs]</a><span class="k">def</span> <span class="nf">infer_global</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">context</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">context</span><span class="o">.</span><span class="n">lookupname</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">InferenceError</span><span class="p">()</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">_infer_stmts</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">root</span><span class="p">()</span><span class="o">.</span><span class="n">getattr</span><span class="p">(</span><span class="n">context</span><span class="o">.</span><span class="n">lookupname</span><span class="p">),</span> <span class="n">context</span><span class="p">)</span>
+    <span class="k">except</span> <span class="n">NotFoundError</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">InferenceError</span><span class="p">()</span></div>
+<span class="n">nodes</span><span class="o">.</span><span class="n">Global</span><span class="o">.</span><span class="n">_infer</span> <span class="o">=</span> <span class="n">path_wrapper</span><span class="p">(</span><span class="n">infer_global</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="infer_subscript"><a class="viewcode-back" href="../inference.html#inference.infer_subscript">[docs]</a><span class="k">def</span> <span class="nf">infer_subscript</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">context</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;infer simple subscription such as [1,2,3][0] or (1,2,3)[-1]&quot;&quot;&quot;</span>
+    <span class="n">value</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">value</span><span class="o">.</span><span class="n">infer</span><span class="p">(</span><span class="n">context</span><span class="p">)</span><span class="o">.</span><span class="n">next</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="n">YES</span><span class="p">:</span>
+        <span class="k">yield</span> <span class="n">YES</span>
+        <span class="k">return</span>
+
+    <span class="n">index</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">slice</span><span class="o">.</span><span class="n">infer</span><span class="p">(</span><span class="n">context</span><span class="p">)</span><span class="o">.</span><span class="n">next</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">index</span> <span class="ow">is</span> <span class="n">YES</span><span class="p">:</span>
+        <span class="k">yield</span> <span class="n">YES</span>
+        <span class="k">return</span>
+
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">index</span><span class="p">,</span> <span class="n">nodes</span><span class="o">.</span><span class="n">Const</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">assigned</span> <span class="o">=</span> <span class="n">value</span><span class="o">.</span><span class="n">getitem</span><span class="p">(</span><span class="n">index</span><span class="o">.</span><span class="n">value</span><span class="p">,</span> <span class="n">context</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">InferenceError</span><span class="p">()</span>
+        <span class="k">except</span> <span class="p">(</span><span class="ne">IndexError</span><span class="p">,</span> <span class="ne">TypeError</span><span class="p">):</span>
+            <span class="k">yield</span> <span class="n">YES</span>
+            <span class="k">return</span>
+        <span class="k">for</span> <span class="n">infered</span> <span class="ow">in</span> <span class="n">assigned</span><span class="o">.</span><span class="n">infer</span><span class="p">(</span><span class="n">context</span><span class="p">):</span>
+            <span class="k">yield</span> <span class="n">infered</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">InferenceError</span><span class="p">()</span></div>
+<span class="n">nodes</span><span class="o">.</span><span class="n">Subscript</span><span class="o">.</span><span class="n">_infer</span> <span class="o">=</span> <span class="n">path_wrapper</span><span class="p">(</span><span class="n">infer_subscript</span><span class="p">)</span>
+<span class="n">nodes</span><span class="o">.</span><span class="n">Subscript</span><span class="o">.</span><span class="n">infer_lhs</span> <span class="o">=</span> <span class="n">raise_if_nothing_infered</span><span class="p">(</span><span class="n">infer_subscript</span><span class="p">)</span>
+
+
+<span class="n">UNARY_OP_METHOD</span> <span class="o">=</span> <span class="p">{</span><span class="s">&#39;+&#39;</span><span class="p">:</span> <span class="s">&#39;__pos__&#39;</span><span class="p">,</span>
+                   <span class="s">&#39;-&#39;</span><span class="p">:</span> <span class="s">&#39;__neg__&#39;</span><span class="p">,</span>
+                   <span class="s">&#39;~&#39;</span><span class="p">:</span> <span class="s">&#39;__invert__&#39;</span><span class="p">,</span>
+                   <span class="s">&#39;not&#39;</span><span class="p">:</span> <span class="bp">None</span><span class="p">,</span> <span class="c"># XXX not &#39;__nonzero__&#39;</span>
+                  <span class="p">}</span>
+
+<div class="viewcode-block" id="infer_unaryop"><a class="viewcode-back" href="../inference.html#inference.infer_unaryop">[docs]</a><span class="k">def</span> <span class="nf">infer_unaryop</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">context</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+    <span class="k">for</span> <span class="n">operand</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">operand</span><span class="o">.</span><span class="n">infer</span><span class="p">(</span><span class="n">context</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">yield</span> <span class="n">operand</span><span class="o">.</span><span class="n">infer_unary_op</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">op</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">TypeError</span><span class="p">:</span>
+            <span class="k">continue</span>
+        <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+            <span class="n">meth</span> <span class="o">=</span> <span class="n">UNARY_OP_METHOD</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">op</span><span class="p">]</span>
+            <span class="k">if</span> <span class="n">meth</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="k">yield</span> <span class="n">YES</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="c"># XXX just suppose if the type implement meth, returned type</span>
+                    <span class="c"># will be the same</span>
+                    <span class="n">operand</span><span class="o">.</span><span class="n">getattr</span><span class="p">(</span><span class="n">meth</span><span class="p">)</span>
+                    <span class="k">yield</span> <span class="n">operand</span>
+                <span class="k">except</span> <span class="ne">GeneratorExit</span><span class="p">:</span>
+                    <span class="k">raise</span>
+                <span class="k">except</span><span class="p">:</span>
+                    <span class="k">yield</span> <span class="n">YES</span></div>
+<span class="n">nodes</span><span class="o">.</span><span class="n">UnaryOp</span><span class="o">.</span><span class="n">_infer</span> <span class="o">=</span> <span class="n">path_wrapper</span><span class="p">(</span><span class="n">infer_unaryop</span><span class="p">)</span>
+
+
+<span class="n">BIN_OP_METHOD</span> <span class="o">=</span> <span class="p">{</span><span class="s">&#39;+&#39;</span><span class="p">:</span>  <span class="s">&#39;__add__&#39;</span><span class="p">,</span>
+                 <span class="s">&#39;-&#39;</span><span class="p">:</span>  <span class="s">&#39;__sub__&#39;</span><span class="p">,</span>
+                 <span class="s">&#39;/&#39;</span><span class="p">:</span>  <span class="s">&#39;__div__&#39;</span><span class="p">,</span>
+                 <span class="s">&#39;//&#39;</span><span class="p">:</span> <span class="s">&#39;__floordiv__&#39;</span><span class="p">,</span>
+                 <span class="s">&#39;*&#39;</span><span class="p">:</span>  <span class="s">&#39;__mul__&#39;</span><span class="p">,</span>
+                 <span class="s">&#39;**&#39;</span><span class="p">:</span> <span class="s">&#39;__power__&#39;</span><span class="p">,</span>
+                 <span class="s">&#39;%&#39;</span><span class="p">:</span>  <span class="s">&#39;__mod__&#39;</span><span class="p">,</span>
+                 <span class="s">&#39;&amp;&#39;</span><span class="p">:</span>  <span class="s">&#39;__and__&#39;</span><span class="p">,</span>
+                 <span class="s">&#39;|&#39;</span><span class="p">:</span>  <span class="s">&#39;__or__&#39;</span><span class="p">,</span>
+                 <span class="s">&#39;^&#39;</span><span class="p">:</span>  <span class="s">&#39;__xor__&#39;</span><span class="p">,</span>
+                 <span class="s">&#39;&lt;&lt;&#39;</span><span class="p">:</span> <span class="s">&#39;__lshift__&#39;</span><span class="p">,</span>
+                 <span class="s">&#39;&gt;&gt;&#39;</span><span class="p">:</span> <span class="s">&#39;__rshift__&#39;</span><span class="p">,</span>
+                 <span class="p">}</span>
+
+<span class="k">def</span> <span class="nf">_infer_binop</span><span class="p">(</span><span class="n">operator</span><span class="p">,</span> <span class="n">operand1</span><span class="p">,</span> <span class="n">operand2</span><span class="p">,</span> <span class="n">context</span><span class="p">,</span> <span class="n">failures</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">operand1</span> <span class="ow">is</span> <span class="n">YES</span><span class="p">:</span>
+        <span class="k">yield</span> <span class="n">operand1</span>
+        <span class="k">return</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">valnode</span> <span class="ow">in</span> <span class="n">operand1</span><span class="o">.</span><span class="n">infer_binary_op</span><span class="p">(</span><span class="n">operator</span><span class="p">,</span> <span class="n">operand2</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
+            <span class="k">yield</span> <span class="n">valnode</span>
+    <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="c"># XXX just suppose if the type implement meth, returned type</span>
+            <span class="c"># will be the same</span>
+            <span class="n">operand1</span><span class="o">.</span><span class="n">getattr</span><span class="p">(</span><span class="n">BIN_OP_METHOD</span><span class="p">[</span><span class="n">operator</span><span class="p">])</span>
+            <span class="k">yield</span> <span class="n">operand1</span>
+        <span class="k">except</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">failures</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="k">yield</span> <span class="n">YES</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">failures</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">operand1</span><span class="p">)</span>
+
+<div class="viewcode-block" id="infer_binop"><a class="viewcode-back" href="../inference.html#inference.infer_binop">[docs]</a><span class="k">def</span> <span class="nf">infer_binop</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">context</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+    <span class="n">failures</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">lhs</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">left</span><span class="o">.</span><span class="n">infer</span><span class="p">(</span><span class="n">context</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">val</span> <span class="ow">in</span> <span class="n">_infer_binop</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">op</span><span class="p">,</span> <span class="n">lhs</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">right</span><span class="p">,</span> <span class="n">context</span><span class="p">,</span> <span class="n">failures</span><span class="p">):</span>
+            <span class="k">yield</span> <span class="n">val</span>
+    <span class="k">for</span> <span class="n">lhs</span> <span class="ow">in</span> <span class="n">failures</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">rhs</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">right</span><span class="o">.</span><span class="n">infer</span><span class="p">(</span><span class="n">context</span><span class="p">):</span>
+            <span class="k">for</span> <span class="n">val</span> <span class="ow">in</span> <span class="n">_infer_binop</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">op</span><span class="p">,</span> <span class="n">rhs</span><span class="p">,</span> <span class="n">lhs</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
+                <span class="k">yield</span> <span class="n">val</span></div>
+<span class="n">nodes</span><span class="o">.</span><span class="n">BinOp</span><span class="o">.</span><span class="n">_infer</span> <span class="o">=</span> <span class="n">path_wrapper</span><span class="p">(</span><span class="n">infer_binop</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="infer_arguments"><a class="viewcode-back" href="../inference.html#inference.infer_arguments">[docs]</a><span class="k">def</span> <span class="nf">infer_arguments</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">context</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+    <span class="n">name</span> <span class="o">=</span> <span class="n">context</span><span class="o">.</span><span class="n">lookupname</span>
+    <span class="k">if</span> <span class="n">name</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">InferenceError</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">_arguments_infer_argname</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">context</span><span class="p">)</span></div>
+<span class="n">nodes</span><span class="o">.</span><span class="n">Arguments</span><span class="o">.</span><span class="n">_infer</span> <span class="o">=</span> <span class="n">infer_arguments</span>
+
+
+<div class="viewcode-block" id="infer_ass"><a class="viewcode-back" href="../inference.html#inference.infer_ass">[docs]</a><span class="k">def</span> <span class="nf">infer_ass</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">context</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;infer a AssName/AssAttr: need to inspect the RHS part of the</span>
+<span class="sd">    assign node</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">stmt</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">statement</span><span class="p">()</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">stmt</span><span class="p">,</span> <span class="n">nodes</span><span class="o">.</span><span class="n">AugAssign</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">stmt</span><span class="o">.</span><span class="n">infer</span><span class="p">(</span><span class="n">context</span><span class="p">)</span>
+    <span class="n">stmts</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">assigned_stmts</span><span class="p">(</span><span class="n">context</span><span class="o">=</span><span class="n">context</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">_infer_stmts</span><span class="p">(</span><span class="n">stmts</span><span class="p">,</span> <span class="n">context</span><span class="p">)</span></div>
+<span class="n">nodes</span><span class="o">.</span><span class="n">AssName</span><span class="o">.</span><span class="n">_infer</span> <span class="o">=</span> <span class="n">path_wrapper</span><span class="p">(</span><span class="n">infer_ass</span><span class="p">)</span>
+<span class="n">nodes</span><span class="o">.</span><span class="n">AssAttr</span><span class="o">.</span><span class="n">_infer</span> <span class="o">=</span> <span class="n">path_wrapper</span><span class="p">(</span><span class="n">infer_ass</span><span class="p">)</span>
+
+<div class="viewcode-block" id="infer_augassign"><a class="viewcode-back" href="../inference.html#inference.infer_augassign">[docs]</a><span class="k">def</span> <span class="nf">infer_augassign</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">context</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+    <span class="n">failures</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">lhs</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">target</span><span class="o">.</span><span class="n">infer_lhs</span><span class="p">(</span><span class="n">context</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">val</span> <span class="ow">in</span> <span class="n">_infer_binop</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">op</span><span class="p">,</span> <span class="n">lhs</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">value</span><span class="p">,</span> <span class="n">context</span><span class="p">,</span> <span class="n">failures</span><span class="p">):</span>
+            <span class="k">yield</span> <span class="n">val</span>
+    <span class="k">for</span> <span class="n">lhs</span> <span class="ow">in</span> <span class="n">failures</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">rhs</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">value</span><span class="o">.</span><span class="n">infer</span><span class="p">(</span><span class="n">context</span><span class="p">):</span>
+            <span class="k">for</span> <span class="n">val</span> <span class="ow">in</span> <span class="n">_infer_binop</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">op</span><span class="p">,</span> <span class="n">rhs</span><span class="p">,</span> <span class="n">lhs</span><span class="p">,</span> <span class="n">context</span><span class="p">):</span>
+                <span class="k">yield</span> <span class="n">val</span></div>
+<span class="n">nodes</span><span class="o">.</span><span class="n">AugAssign</span><span class="o">.</span><span class="n">_infer</span> <span class="o">=</span> <span class="n">path_wrapper</span><span class="p">(</span><span class="n">infer_augassign</span><span class="p">)</span>
+
+
+<span class="c"># no infer method on DelName and DelAttr (expected InferenceError)</span>
+
+
+<div class="viewcode-block" id="infer_empty_node"><a class="viewcode-back" href="../inference.html#inference.infer_empty_node">[docs]</a><span class="k">def</span> <span class="nf">infer_empty_node</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">context</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_underlying_object</span><span class="p">():</span>
+        <span class="k">yield</span> <span class="n">YES</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">infered</span> <span class="ow">in</span> <span class="n">MANAGER</span><span class="o">.</span><span class="n">infer_ast_from_something</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">object</span><span class="p">,</span>
+                                                              <span class="n">context</span><span class="o">=</span><span class="n">context</span><span class="p">):</span>
+                <span class="k">yield</span> <span class="n">infered</span>
+        <span class="k">except</span> <span class="n">AstroidError</span><span class="p">:</span>
+            <span class="k">yield</span> <span class="n">YES</span></div>
+<span class="n">nodes</span><span class="o">.</span><span class="n">EmptyNode</span><span class="o">.</span><span class="n">_infer</span> <span class="o">=</span> <span class="n">path_wrapper</span><span class="p">(</span><span class="n">infer_empty_node</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="infer_index"><a class="viewcode-back" href="../inference.html#inference.infer_index">[docs]</a><span class="k">def</span> <span class="nf">infer_index</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">context</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+    <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">value</span><span class="o">.</span><span class="n">infer</span><span class="p">(</span><span class="n">context</span><span class="p">)</span></div>
+<span class="n">nodes</span><span class="o">.</span><span class="n">Index</span><span class="o">.</span><span class="n">_infer</span> <span class="o">=</span> <span class="n">infer_index</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../index.html">Astroid 0.24.4 documentation</a> &raquo;</li>
+          <li><a href="index.html" >Module code</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2013, Logilab S.A..
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.2.1.
+    </div>
+  </body>
+</html>

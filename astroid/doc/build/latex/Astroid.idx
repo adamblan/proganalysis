@@ -1,0 +1,22 @@
+\indexentry{inference (module)|hyperpage}{4}
+\indexentry{CallContext (class in inference)|hyperpage}{4}
+\indexentry{infer\_argument() (inference.CallContext method)|hyperpage}{4}
+\indexentry{infer\_arguments() (in module inference)|hyperpage}{4}
+\indexentry{infer\_ass() (in module inference)|hyperpage}{4}
+\indexentry{infer\_augassign() (in module inference)|hyperpage}{4}
+\indexentry{infer\_binop() (in module inference)|hyperpage}{4}
+\indexentry{infer\_callfunc() (in module inference)|hyperpage}{4}
+\indexentry{infer\_empty\_node() (in module inference)|hyperpage}{4}
+\indexentry{infer\_end() (in module inference)|hyperpage}{4}
+\indexentry{infer\_from() (in module inference)|hyperpage}{4}
+\indexentry{infer\_getattr() (in module inference)|hyperpage}{4}
+\indexentry{infer\_global() (in module inference)|hyperpage}{4}
+\indexentry{infer\_import() (in module inference)|hyperpage}{4}
+\indexentry{infer\_index() (in module inference)|hyperpage}{4}
+\indexentry{infer\_name() (in module inference)|hyperpage}{4}
+\indexentry{infer\_name\_module() (in module inference)|hyperpage}{5}
+\indexentry{infer\_subscript() (in module inference)|hyperpage}{5}
+\indexentry{infer\_unaryop() (in module inference)|hyperpage}{5}
+\indexentry{register\_transform() (astroid.manager.AstroidManager method)|hyperpage}{7}
+\indexentry{AsStringRegexpPredicate (class in astroid)|hyperpage}{7}
+\indexentry{inference\_tip() (in module astroid)|hyperpage}{7}
